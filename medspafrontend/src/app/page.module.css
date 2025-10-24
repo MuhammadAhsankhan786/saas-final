@@ -1,0 +1,54 @@
+/* External CSS for App Layout */
+
+/* Container with sidebar + main area */
+.appContainer {
+  height: 100vh; /* h-screen */
+  display: grid; /* grid */
+  grid-template-columns: 16rem 1fr; /* sidebar 16rem + content */
+  background-color: var(--background); /* bg-background */
+}
+
+
+/* Main scrollable area */
+.mainArea {
+  overflow: auto; /* overflow-auto */
+  min-height: 0; /* min-h-0 */
+}
+
+/* Content padding */
+.contentPadding {
+  padding: 1.5rem; /* p-6 */
+}
+
+
+/* Placeholder container */
+.placeholderContainer {
+  text-align: center;
+  padding: 3rem;
+}
+
+/* Placeholder title */
+.placeholderTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+/* Placeholder subtitle */
+.placeholderSubtitle {
+  color: var(--muted-foreground);
+  margin-bottom: 1.5rem;
+}
+
+/* Back link */
+.backLink {
+  color: var(--primary);
+  text-decoration: none;
+  cursor: pointer;
+  transition: text-decoration 0.2s;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
