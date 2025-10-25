@@ -35,7 +35,6 @@ import { ComplianceAlerts } from "../components/compliance/compliance-alerts";
 import { ProfileSettings } from "../components/settings/profile-settings";
 import { BusinessSettings } from "../components/settings/business-settings";
 import { StaffManagement } from "../components/settings/staff-management";
-import { Support } from "../components/settings/support";
 import LocationsPage from "../pages/admin/locations";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 
@@ -147,8 +146,6 @@ function AppContent() {
         return <BusinessSettings onPageChange={handlePageChange} />;
       case "settings/staff":
         return <StaffManagement onPageChange={handlePageChange} />;
-      case "settings/support":
-        return <Support onPageChange={handlePageChange} />;
       default:
         return renderDashboard();
     }

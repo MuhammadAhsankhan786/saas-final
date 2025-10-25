@@ -139,9 +139,19 @@ export function PaymentHistory({ onPageChange }) {
 
   const handleDownloadReceipt = async (paymentId) => {
     try {
-      const receiptUrl = await generateReceipt(paymentId);
-      // Open receipt in new tab or trigger download
-      window.open(receiptUrl, '_blank');
+      const blob = await generateReceipt(paymentId);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `receipt-${paymentId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Cleanup
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
     } catch (err) {
       console.error("Error generating receipt:", err);
       alert("Failed to generate receipt. Please try again.");

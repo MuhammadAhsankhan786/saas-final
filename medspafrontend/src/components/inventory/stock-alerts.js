@@ -48,87 +48,7 @@ import {
   X,
   Loader2,
 } from "lucide-react";
-import { getStockNotifications, markStockNotificationAsRead } from "@/lib/api";
-
-// Mock stock alert data
-const stockAlerts = [
-  {
-    id: "1",
-    productName: "Juvederm Ultra",
-    sku: "JUV-U-1",
-    category: "Dermal Fillers",
-    currentStock: 2,
-    minStock: 2,
-    maxStock: 15,
-    unit: "syringe",
-    alertType: "low-stock",
-    priority: "high",
-    daysUntilOut: 7,
-    lastRestocked: "2025-11-15",
-    supplier: "Allergan",
-    cost: 350.00,
-    sellingPrice: 500.00,
-    createdAt: "2025-12-21T10:30:00Z",
-  },
-  {
-    id: "2",
-    productName: "PRP Kit",
-    sku: "PRP-KIT-1",
-    category: "Treatment Kits",
-    currentStock: 0,
-    minStock: 2,
-    maxStock: 10,
-    unit: "kit",
-    alertType: "out-of-stock",
-    priority: "critical",
-    daysUntilOut: 0,
-    lastRestocked: "2025-10-20",
-    supplier: "MedSupply Co",
-    cost: 25.00,
-    sellingPrice: 50.00,
-    createdAt: "2025-12-20T14:20:00Z",
-  },
-  {
-    id: "3",
-    productName: "Hydrafacial Solution",
-    sku: "HF-SOL-500",
-    category: "Skincare",
-    currentStock: 3,
-    minStock: 5,
-    maxStock: 25,
-    unit: "bottle",
-    alertType: "low-stock",
-    priority: "medium",
-    daysUntilOut: 14,
-    lastRestocked: "2025-12-10",
-    supplier: "Hydrafacial",
-    cost: 80.00,
-    sellingPrice: 120.00,
-    createdAt: "2025-12-19T09:15:00Z",
-  },
-  {
-    id: "4",
-    productName: "Botox (100 units)",
-    sku: "BOT-100",
-    category: "Injectables",
-    currentStock: 4,
-    minStock: 3,
-    maxStock: 20,
-    unit: "vial",
-    alertType: "expiring-soon",
-    priority: "medium",
-    daysUntilOut: 30,
-    expiryDate: "2026-01-15",
-    lastRestocked: "2025-12-01",
-    supplier: "Allergan",
-    cost: 450.00,
-    sellingPrice: 600.00,
-    createdAt: "2025-12-18T16:45:00Z",
-  },
-];
-
-const alertTypes = ["All", "low-stock", "out-of-stock", "expiring-soon"];
-const priorities = ["All", "critical", "high", "medium", "low"];
+import { getStockAlerts, getStockAlertStatistics, dismissStockAlert, resolveStockAlert } from "@/lib/api";
 
 export function StockAlerts({ onPageChange }) {
   const [stockAlerts, setStockAlerts] = useState([]);
@@ -147,7 +67,7 @@ export function StockAlerts({ onPageChange }) {
       setLoading(true);
       setError(null);
       try {
-        const data = await getStockNotifications();
+        const data = await getStockAlerts();
         setStockAlerts(data || []);
       } catch (err) {
         console.error("Error loading stock alerts:", err);
@@ -160,10 +80,10 @@ export function StockAlerts({ onPageChange }) {
   }, []);
 
   const filteredAlerts = stockAlerts.filter((alert) => {
-    const productName = alert.product?.name || alert.product_name || "Unknown Product";
-    const sku = alert.product?.sku || alert.product_sku || "Unknown SKU";
-    const category = alert.product?.category || alert.product_category || "Unknown Category";
-    const supplier = alert.product?.supplier || alert.product_supplier || "Unknown Supplier";
+    const productName = alert.product_name || "Unknown Product";
+    const sku = alert.sku || "Unknown SKU";
+    const category = alert.category || "Unknown Category";
+    const supplier = alert.supplier || "Unknown Supplier";
     
     const matchesSearch = 
       productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -171,7 +91,7 @@ export function StockAlerts({ onPageChange }) {
       category.toLowerCase().includes(searchQuery.toLowerCase()) ||
       supplier.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesAlertType = alertTypeFilter === "All" || alert.type === alertTypeFilter;
+    const matchesAlertType = alertTypeFilter === "All" || alert.alert_type === alertTypeFilter;
     const matchesPriority = priorityFilter === "All" || alert.priority === priorityFilter;
 
     return matchesSearch && matchesAlertType && matchesPriority;
@@ -180,7 +100,10 @@ export function StockAlerts({ onPageChange }) {
   const criticalAlerts = stockAlerts.filter(a => a && a.priority === "critical").length;
   const highPriorityAlerts = stockAlerts.filter(a => a && a.priority === "high").length;
   const totalAlerts = stockAlerts.length;
-  const outOfStockItems = stockAlerts.filter(a => a && a.type === "out-of-stock").length;
+  const outOfStockItems = stockAlerts.filter(a => a && a.alert_type === "out-of-stock").length;
+
+  const alertTypes = ["All", "critical", "high-priority", "out-of-stock", "low-stock", "normal"];
+  const priorities = ["All", "critical", "high", "medium", "low"];
 
   const getAlertIcon = (alertType, priority) => {
     if (priority === "critical") {
@@ -238,9 +161,9 @@ export function StockAlerts({ onPageChange }) {
       setIsProcessing(true);
       setError(null);
       try {
-        await markStockNotificationAsRead(alertId);
+        await dismissStockAlert(alertId);
         // Reload alerts
-        const data = await getStockNotifications();
+        const data = await getStockAlerts();
         setStockAlerts(data || []);
       } catch (err) {
         console.error("Error dismissing alert:", err);
@@ -429,14 +352,14 @@ export function StockAlerts({ onPageChange }) {
               </TableHeader>
               <TableBody>
                 {filteredAlerts.map((alert) => {
-                  const productName = alert.product?.name || alert.product_name || "Unknown Product";
-                  const sku = alert.product?.sku || alert.product_sku || "Unknown SKU";
-                  const category = alert.product?.category || alert.product_category || "Unknown Category";
-                  const currentStock = alert.product?.current_stock || alert.current_stock || 0;
-                  const minStock = alert.product?.min_stock || alert.min_stock || 0;
-                  const maxStock = alert.product?.max_stock || alert.max_stock || 0;
-                  const unit = alert.product?.unit || alert.unit || "unit";
-                  const lastRestocked = alert.product?.last_restocked || alert.last_restocked;
+                  const productName = alert.product_name || "Unknown Product";
+                  const sku = alert.sku || "Unknown SKU";
+                  const category = alert.category || "Unknown Category";
+                  const currentStock = alert.current_stock || 0;
+                  const minStock = alert.min_stock || 0;
+                  const maxStock = alert.max_stock || 0;
+                  const unit = alert.unit || "unit";
+                  const lastRestocked = alert.last_restocked;
                   
                   return (
                     <TableRow key={alert.id}>
@@ -458,13 +381,13 @@ export function StockAlerts({ onPageChange }) {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getAlertTypeBadgeVariant(alert.type)}>
-                          {alert.type.replace("-", " ")}
+                        <Badge variant={getAlertTypeBadgeVariant(alert.alert_type)}>
+                          {alert.alert_type.replace("-", " ")}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
-                          {getAlertIcon(alert.type, alert.priority)}
+                          {getAlertIcon(alert.alert_type, alert.priority)}
                           <Badge variant={getPriorityBadgeVariant(alert.priority)}>
                             {alert.priority.charAt(0).toUpperCase() + alert.priority.slice(1)}
                           </Badge>
@@ -474,7 +397,7 @@ export function StockAlerts({ onPageChange }) {
                         <div className="flex items-center space-x-2">
                           <Clock className="h-4 w-4 text-muted-foreground" />
                           <span className="text-foreground">
-                            {alert.created_at ? new Date(alert.created_at).toLocaleDateString() : 'N/A'}
+                            {alert.days_until_out} days
                           </span>
                         </div>
                       </TableCell>
@@ -534,7 +457,7 @@ export function StockAlerts({ onPageChange }) {
 
       {/* Alert Details Dialog */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="bg-card border-border max-w-2xl">
+        <DialogContent className="bg-card border-border max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Alert Details</DialogTitle>
             <DialogDescription>
@@ -542,17 +465,17 @@ export function StockAlerts({ onPageChange }) {
             </DialogDescription>
           </DialogHeader>
           {selectedAlert && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Product Information */}
               <div>
-                <h3 className="font-semibold text-foreground mb-3 flex items-center">
+                <h3 className="font-semibold text-foreground mb-2 flex items-center">
                   <Package className="mr-2 h-4 w-4" />
                   Product Information
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-muted rounded-lg">
                   <div>
                     <div className="text-sm text-muted-foreground">Product Name</div>
-                    <div className="font-medium text-foreground">{selectedAlert.productName}</div>
+                    <div className="font-medium text-foreground">{selectedAlert.product_name}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">SKU</div>
@@ -571,33 +494,33 @@ export function StockAlerts({ onPageChange }) {
 
               {/* Stock Information */}
               <div>
-                <h3 className="font-semibold text-foreground mb-3 flex items-center">
+                <h3 className="font-semibold text-foreground mb-2 flex items-center">
                   <AlertTriangle className="mr-2 h-4 w-4" />
                   Stock Information
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-muted rounded-lg">
                   <div>
                     <div className="text-sm text-muted-foreground">Current Stock</div>
                     <div className="font-medium text-foreground">
-                      {selectedAlert.currentStock} {selectedAlert.unit}
+                      {selectedAlert.current_stock} {selectedAlert.unit}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Minimum Stock</div>
-                    <div className="font-medium text-foreground">{selectedAlert.minStock}</div>
+                    <div className="font-medium text-foreground">{selectedAlert.min_stock}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Maximum Stock</div>
-                    <div className="font-medium text-foreground">{selectedAlert.maxStock}</div>
+                    <div className="font-medium text-foreground">{selectedAlert.max_stock}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Days Until Out</div>
                     <div className={`font-medium ${
-                      selectedAlert.daysUntilOut === 0 ? "text-red-600" :
-                      selectedAlert.daysUntilOut <= 7 ? "text-orange-600" :
+                      selectedAlert.days_until_out === 0 ? "text-red-600" :
+                      selectedAlert.days_until_out <= 7 ? "text-orange-600" :
                       "text-foreground"
                     }`}>
-                      {selectedAlert.daysUntilOut} days
+                      {selectedAlert.days_until_out} days
                     </div>
                   </div>
                 </div>
@@ -605,21 +528,21 @@ export function StockAlerts({ onPageChange }) {
 
               {/* Alert Information */}
               <div>
-                <h3 className="font-semibold text-foreground mb-3 flex items-center">
+                <h3 className="font-semibold text-foreground mb-2 flex items-center">
                   <Bell className="mr-2 h-4 w-4" />
                   Alert Information
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-muted rounded-lg">
                   <div>
                     <div className="text-sm text-muted-foreground">Alert Type</div>
-                    <Badge variant={getAlertTypeBadgeVariant(selectedAlert.alertType)}>
-                      {selectedAlert.alertType.replace("-", " ")}
+                    <Badge variant={getAlertTypeBadgeVariant(selectedAlert.alert_type)}>
+                      {selectedAlert.alert_type.replace("-", " ")}
                     </Badge>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Priority</div>
                     <div className="flex items-center space-x-2">
-                      {getAlertIcon(selectedAlert.alertType, selectedAlert.priority)}
+                      {getAlertIcon(selectedAlert.alert_type, selectedAlert.priority)}
                       <Badge variant={getPriorityBadgeVariant(selectedAlert.priority)}>
                         {selectedAlert.priority.charAt(0).toUpperCase() + selectedAlert.priority.slice(1)}
                       </Badge>
@@ -628,13 +551,13 @@ export function StockAlerts({ onPageChange }) {
                   <div>
                     <div className="text-sm text-muted-foreground">Last Restocked</div>
                     <div className="font-medium text-foreground">
-                      {new Date(selectedAlert.lastRestocked).toLocaleDateString()}
+                      {selectedAlert.last_restocked ? new Date(selectedAlert.last_restocked).toLocaleDateString() : 'N/A'}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Alert Created</div>
                     <div className="font-medium text-foreground">
-                      {new Date(selectedAlert.createdAt).toLocaleDateString()}
+                      {new Date(selectedAlert.created_at).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
@@ -642,11 +565,11 @@ export function StockAlerts({ onPageChange }) {
 
               {/* Pricing Information */}
               <div>
-                <h3 className="font-semibold text-foreground mb-3 flex items-center">
+                <h3 className="font-semibold text-foreground mb-2 flex items-center">
                   <Package className="mr-2 h-4 w-4" />
                   Pricing Information
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-muted rounded-lg">
                   <div>
                     <div className="text-sm text-muted-foreground">Cost Price</div>
                     <div className="font-medium text-foreground">
@@ -656,14 +579,14 @@ export function StockAlerts({ onPageChange }) {
                   <div>
                     <div className="text-sm text-muted-foreground">Selling Price</div>
                     <div className="font-medium text-foreground">
-                      ${selectedAlert.sellingPrice.toLocaleString()}
+                      ${selectedAlert.selling_price.toLocaleString()}
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Actions */}
-              <div className="flex justify-end space-x-2">
+              <div className="flex justify-end space-x-2 pt-2">
                 <Button
                   variant="outline"
                   onClick={() => setIsDetailsOpen(false)}

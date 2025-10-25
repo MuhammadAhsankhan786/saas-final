@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -33,24 +33,26 @@ import {
   Upload,
   Camera,
 } from "lucide-react";
+import { getUserProfile, updateUserProfile, uploadProfilePhoto } from "@/lib/api";
 
 export function ProfileSettings({ onPageChange }) {
   const [profileData, setProfileData] = useState({
-    firstName: "Dr. Sarah",
-    lastName: "Chen",
-    email: "sarah.chen@medispa.com",
-    phone: "(555) 123-4567",
-    title: "Medical Director",
-    department: "Injectables",
-    bio: "Experienced medical professional specializing in aesthetic treatments with over 10 years of experience.",
-    address: "123 Medical Plaza",
-    city: "New York",
-    state: "NY",
-    zipCode: "10001",
-    dateOfBirth: "1985-03-15",
-    emergencyContact: "John Chen",
-    emergencyPhone: "(555) 987-6543",
-    notifications: {
+    first_name: "",
+    last_name: "",
+    email: "",
+    phone: "",
+    title: "",
+    department: "",
+    bio: "",
+    address: "",
+    city: "",
+    state: "",
+    zip_code: "",
+    date_of_birth: "",
+    emergency_contact: "",
+    emergency_phone: "",
+    profile_image: "",
+    notification_preferences: {
       email: true,
       sms: true,
       push: false,
@@ -58,7 +60,7 @@ export function ProfileSettings({ onPageChange }) {
       systemUpdates: true,
       marketing: false,
     },
-    privacy: {
+    privacy_settings: {
       profileVisibility: "staff",
       showEmail: false,
       showPhone: true,
@@ -68,6 +70,28 @@ export function ProfileSettings({ onPageChange }) {
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Fetch user profile on component mount
+  useEffect(() => {
+    async function fetchProfile() {
+      try {
+        setIsLoading(true);
+        setError("");
+        const profile = await getUserProfile();
+        setProfileData(profile);
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+        setError("Failed to load profile: " + error.message);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchProfile();
+  }, []);
 
   const handleInputChange = (field, value) => {
     setProfileData(prev => ({ ...prev, [field]: value }));
@@ -85,14 +109,15 @@ export function ProfileSettings({ onPageChange }) {
 
   const handleSave = async () => {
     setIsSaving(true);
+    setError("");
     try {
-      // Here you would typically save the profile data
       console.log("Saving profile:", profileData);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await updateUserProfile(profileData);
       alert("Profile updated successfully!");
       setIsEditing(false);
     } catch (error) {
       console.error("Error saving profile:", error);
+      setError("Error saving profile: " + error.message);
       alert("Error saving profile. Please try again.");
     } finally {
       setIsSaving(false);
@@ -102,6 +127,34 @@ export function ProfileSettings({ onPageChange }) {
   const handleCancel = () => {
     setIsEditing(false);
     // Reset form data if needed
+  };
+
+  const handlePhotoUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setIsUploadingPhoto(true);
+    setError("");
+    try {
+      const result = await uploadProfilePhoto(file);
+      setProfileData(prev => ({ 
+        ...prev, 
+        profile_image: result.profile_image_url 
+      }));
+      alert("Profile photo uploaded successfully!");
+    } catch (error) {
+      console.error("Error uploading photo:", error);
+      setError("Error uploading photo: " + error.message);
+      alert("Error uploading photo. Please try again.");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  const handlePhotoClick = () => {
+    if (isEditing) {
+      fileInputRef.current?.click();
+    }
   };
 
   const departments = [
@@ -171,27 +224,67 @@ export function ProfileSettings({ onPageChange }) {
         </div>
       </div>
 
-      {/* Profile Header */}
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
+
+      {/* Loading State */}
+      {isLoading && (
+        <div className="text-center py-8">
+          <div className="text-muted-foreground">Loading profile...</div>
+        </div>
+      )}
+
+      {/* Main Content - Only show when not loading */}
+      {!isLoading && (
+        <>
+          {/* Profile Header */}
       <Card className="bg-card border-border">
         <CardContent className="pt-6">
           <div className="flex items-center space-x-6">
             <div className="relative">
-              <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center">
-                <User className="h-12 w-12 text-muted-foreground" />
+              <div 
+                className="w-24 h-24 bg-muted rounded-full flex items-center justify-center cursor-pointer hover:bg-muted/80 transition-colors"
+                onClick={handlePhotoClick}
+              >
+                {profileData.profile_image ? (
+                  <img 
+                    src={profileData.profile_image} 
+                    alt="Profile" 
+                    className="w-24 h-24 rounded-full object-cover"
+                  />
+                ) : (
+                  <User className="h-12 w-12 text-muted-foreground" />
+                )}
               </div>
               {isEditing && (
                 <Button
                   size="sm"
                   className="absolute -bottom-2 -right-2 rounded-full"
-                  onClick={() => alert("Upload photo functionality would open here")}
+                  onClick={handlePhotoClick}
+                  disabled={isUploadingPhoto}
                 >
-                  <Camera className="h-4 w-4" />
+                  {isUploadingPhoto ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  ) : (
+                    <Camera className="h-4 w-4" />
+                  )}
                 </Button>
               )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoUpload}
+                className="hidden"
+              />
             </div>
             <div className="flex-1">
               <h2 className="text-2xl font-bold text-foreground">
-                {profileData.firstName} {profileData.lastName}
+                {profileData.first_name} {profileData.last_name}
               </h2>
               <p className="text-muted-foreground">{profileData.title}</p>
               <p className="text-muted-foreground">{profileData.department}</p>
@@ -219,8 +312,8 @@ export function ProfileSettings({ onPageChange }) {
                 <Label htmlFor="firstName">First Name</Label>
                 <Input
                   id="firstName"
-                  value={profileData.firstName}
-                  onChange={(e) => handleInputChange("firstName", e.target.value)}
+                  value={profileData.first_name || ""}
+                  onChange={(e) => handleInputChange("first_name", e.target.value)}
                   disabled={!isEditing}
                   className="bg-input-background border-border"
                 />
@@ -229,8 +322,8 @@ export function ProfileSettings({ onPageChange }) {
                 <Label htmlFor="lastName">Last Name</Label>
                 <Input
                   id="lastName"
-                  value={profileData.lastName}
-                  onChange={(e) => handleInputChange("lastName", e.target.value)}
+                  value={profileData.last_name || ""}
+                  onChange={(e) => handleInputChange("last_name", e.target.value)}
                   disabled={!isEditing}
                   className="bg-input-background border-border"
                 />
@@ -242,7 +335,7 @@ export function ProfileSettings({ onPageChange }) {
               <Input
                 id="email"
                 type="email"
-                value={profileData.email}
+                value={profileData.email || ""}
                 onChange={(e) => handleInputChange("email", e.target.value)}
                 disabled={!isEditing}
                 className="bg-input-background border-border"
@@ -253,7 +346,7 @@ export function ProfileSettings({ onPageChange }) {
               <Label htmlFor="phone">Phone Number</Label>
               <Input
                 id="phone"
-                value={profileData.phone}
+                value={profileData.phone || ""}
                 onChange={(e) => handleInputChange("phone", e.target.value)}
                 disabled={!isEditing}
                 className="bg-input-background border-border"
@@ -264,7 +357,7 @@ export function ProfileSettings({ onPageChange }) {
               <div>
                 <Label htmlFor="title">Job Title</Label>
                 <Select 
-                  value={profileData.title} 
+                  value={profileData.title || ""} 
                   onValueChange={(value) => handleInputChange("title", value)}
                   disabled={!isEditing}
                 >
@@ -283,7 +376,7 @@ export function ProfileSettings({ onPageChange }) {
               <div>
                 <Label htmlFor="department">Department</Label>
                 <Select 
-                  value={profileData.department} 
+                  value={profileData.department || ""} 
                   onValueChange={(value) => handleInputChange("department", value)}
                   disabled={!isEditing}
                 >
@@ -305,7 +398,7 @@ export function ProfileSettings({ onPageChange }) {
               <Label htmlFor="bio">Bio</Label>
               <Textarea
                 id="bio"
-                value={profileData.bio}
+                value={profileData.bio || ""}
                 onChange={(e) => handleInputChange("bio", e.target.value)}
                 disabled={!isEditing}
                 className="bg-input-background border-border"
@@ -328,7 +421,7 @@ export function ProfileSettings({ onPageChange }) {
               <Label htmlFor="address">Address</Label>
               <Input
                 id="address"
-                value={profileData.address}
+                value={profileData.address || ""}
                 onChange={(e) => handleInputChange("address", e.target.value)}
                 disabled={!isEditing}
                 className="bg-input-background border-border"
@@ -340,7 +433,7 @@ export function ProfileSettings({ onPageChange }) {
                 <Label htmlFor="city">City</Label>
                 <Input
                   id="city"
-                  value={profileData.city}
+                  value={profileData.city || ""}
                   onChange={(e) => handleInputChange("city", e.target.value)}
                   disabled={!isEditing}
                   className="bg-input-background border-border"
@@ -350,7 +443,7 @@ export function ProfileSettings({ onPageChange }) {
                 <Label htmlFor="state">State</Label>
                 <Input
                   id="state"
-                  value={profileData.state}
+                  value={profileData.state || ""}
                   onChange={(e) => handleInputChange("state", e.target.value)}
                   disabled={!isEditing}
                   className="bg-input-background border-border"
@@ -362,8 +455,8 @@ export function ProfileSettings({ onPageChange }) {
               <Label htmlFor="zipCode">ZIP Code</Label>
               <Input
                 id="zipCode"
-                value={profileData.zipCode}
-                onChange={(e) => handleInputChange("zipCode", e.target.value)}
+                value={profileData.zip_code || ""}
+                onChange={(e) => handleInputChange("zip_code", e.target.value)}
                 disabled={!isEditing}
                 className="bg-input-background border-border"
               />
@@ -374,8 +467,8 @@ export function ProfileSettings({ onPageChange }) {
               <Input
                 id="dateOfBirth"
                 type="date"
-                value={profileData.dateOfBirth}
-                onChange={(e) => handleInputChange("dateOfBirth", e.target.value)}
+                value={profileData.date_of_birth || ""}
+                onChange={(e) => handleInputChange("date_of_birth", e.target.value)}
                 disabled={!isEditing}
                 className="bg-input-background border-border"
               />
@@ -386,8 +479,8 @@ export function ProfileSettings({ onPageChange }) {
                 <Label htmlFor="emergencyContact">Emergency Contact</Label>
                 <Input
                   id="emergencyContact"
-                  value={profileData.emergencyContact}
-                  onChange={(e) => handleInputChange("emergencyContact", e.target.value)}
+                  value={profileData.emergency_contact || ""}
+                  onChange={(e) => handleInputChange("emergency_contact", e.target.value)}
                   disabled={!isEditing}
                   className="bg-input-background border-border"
                 />
@@ -396,8 +489,8 @@ export function ProfileSettings({ onPageChange }) {
                 <Label htmlFor="emergencyPhone">Emergency Phone</Label>
                 <Input
                   id="emergencyPhone"
-                  value={profileData.emergencyPhone}
-                  onChange={(e) => handleInputChange("emergencyPhone", e.target.value)}
+                  value={profileData.emergency_phone || ""}
+                  onChange={(e) => handleInputChange("emergency_phone", e.target.value)}
                   disabled={!isEditing}
                   className="bg-input-background border-border"
                 />
@@ -424,8 +517,8 @@ export function ProfileSettings({ onPageChange }) {
                   <Label htmlFor="email-notifications">Email Notifications</Label>
                   <Switch
                     id="email-notifications"
-                    checked={profileData.notifications.email}
-                    onCheckedChange={(checked) => handleNestedInputChange("notifications", "email", checked)}
+                    checked={profileData.notification_preferences?.email || false}
+                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "email", checked)}
                     disabled={!isEditing}
                   />
                 </div>
@@ -433,8 +526,8 @@ export function ProfileSettings({ onPageChange }) {
                   <Label htmlFor="sms-notifications">SMS Notifications</Label>
                   <Switch
                     id="sms-notifications"
-                    checked={profileData.notifications.sms}
-                    onCheckedChange={(checked) => handleNestedInputChange("notifications", "sms", checked)}
+                    checked={profileData.notification_preferences?.sms || false}
+                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "sms", checked)}
                     disabled={!isEditing}
                   />
                 </div>
@@ -442,8 +535,8 @@ export function ProfileSettings({ onPageChange }) {
                   <Label htmlFor="push-notifications">Push Notifications</Label>
                   <Switch
                     id="push-notifications"
-                    checked={profileData.notifications.push}
-                    onCheckedChange={(checked) => handleNestedInputChange("notifications", "push", checked)}
+                    checked={profileData.notification_preferences?.push || false}
+                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "push", checked)}
                     disabled={!isEditing}
                   />
                 </div>
@@ -457,8 +550,8 @@ export function ProfileSettings({ onPageChange }) {
                   <Label htmlFor="appointment-reminders">Appointment Reminders</Label>
                   <Switch
                     id="appointment-reminders"
-                    checked={profileData.notifications.appointmentReminders}
-                    onCheckedChange={(checked) => handleNestedInputChange("notifications", "appointmentReminders", checked)}
+                    checked={profileData.notification_preferences?.appointmentReminders || false}
+                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "appointmentReminders", checked)}
                     disabled={!isEditing}
                   />
                 </div>
@@ -466,8 +559,8 @@ export function ProfileSettings({ onPageChange }) {
                   <Label htmlFor="system-updates">System Updates</Label>
                   <Switch
                     id="system-updates"
-                    checked={profileData.notifications.systemUpdates}
-                    onCheckedChange={(checked) => handleNestedInputChange("notifications", "systemUpdates", checked)}
+                    checked={profileData.notification_preferences?.systemUpdates || false}
+                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "systemUpdates", checked)}
                     disabled={!isEditing}
                   />
                 </div>
@@ -475,8 +568,8 @@ export function ProfileSettings({ onPageChange }) {
                   <Label htmlFor="marketing">Marketing Communications</Label>
                   <Switch
                     id="marketing"
-                    checked={profileData.notifications.marketing}
-                    onCheckedChange={(checked) => handleNestedInputChange("notifications", "marketing", checked)}
+                    checked={profileData.notification_preferences?.marketing || false}
+                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "marketing", checked)}
                     disabled={!isEditing}
                   />
                 </div>
@@ -499,8 +592,8 @@ export function ProfileSettings({ onPageChange }) {
             <div>
               <Label htmlFor="profile-visibility">Profile Visibility</Label>
               <Select 
-                value={profileData.privacy.profileVisibility} 
-                onValueChange={(value) => handleNestedInputChange("privacy", "profileVisibility", value)}
+                value={profileData.privacy_settings?.profileVisibility || "staff"} 
+                onValueChange={(value) => handleNestedInputChange("privacy_settings", "profileVisibility", value)}
                 disabled={!isEditing}
               >
                 <SelectTrigger className="bg-input-background border-border">
@@ -519,8 +612,8 @@ export function ProfileSettings({ onPageChange }) {
                 <Label htmlFor="show-email">Show Email Address</Label>
                 <Switch
                   id="show-email"
-                  checked={profileData.privacy.showEmail}
-                  onCheckedChange={(checked) => handleNestedInputChange("privacy", "showEmail", checked)}
+                  checked={profileData.privacy_settings?.showEmail || false}
+                  onCheckedChange={(checked) => handleNestedInputChange("privacy_settings", "showEmail", checked)}
                   disabled={!isEditing}
                 />
               </div>
@@ -528,8 +621,8 @@ export function ProfileSettings({ onPageChange }) {
                 <Label htmlFor="show-phone">Show Phone Number</Label>
                 <Switch
                   id="show-phone"
-                  checked={profileData.privacy.showPhone}
-                  onCheckedChange={(checked) => handleNestedInputChange("privacy", "showPhone", checked)}
+                  checked={profileData.privacy_settings?.showPhone || false}
+                  onCheckedChange={(checked) => handleNestedInputChange("privacy_settings", "showPhone", checked)}
                   disabled={!isEditing}
                 />
               </div>
@@ -537,8 +630,8 @@ export function ProfileSettings({ onPageChange }) {
                 <Label htmlFor="allow-messages">Allow Direct Messages</Label>
                 <Switch
                   id="allow-messages"
-                  checked={profileData.privacy.allowDirectMessages}
-                  onCheckedChange={(checked) => handleNestedInputChange("privacy", "allowDirectMessages", checked)}
+                  checked={profileData.privacy_settings?.allowDirectMessages || false}
+                  onCheckedChange={(checked) => handleNestedInputChange("privacy_settings", "allowDirectMessages", checked)}
                   disabled={!isEditing}
                 />
               </div>
@@ -546,6 +639,8 @@ export function ProfileSettings({ onPageChange }) {
           </div>
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }

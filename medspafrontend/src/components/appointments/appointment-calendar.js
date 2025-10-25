@@ -31,6 +31,7 @@ import {
   MapPin,
   Plus,
   Filter,
+  ArrowLeft,
 } from "lucide-react";
 
 // Mock appointment data
@@ -174,9 +175,19 @@ export function AppointmentCalendar({ onPageChange }) {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Appointment Calendar</h1>
-          <p className="text-muted-foreground">Manage your appointment schedule</p>
+        <div className="flex items-center space-x-4">
+          <Button
+            variant="outline"
+            onClick={() => onPageChange("dashboard")}
+            className="border-border hover:bg-primary/5"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Appointment Calendar</h1>
+            <p className="text-muted-foreground">Manage your appointment schedule</p>
+          </div>
         </div>
         <Button
           onClick={() => onPageChange("appointments/book")}

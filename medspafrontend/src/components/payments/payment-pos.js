@@ -31,6 +31,7 @@ import {
   User,
   Clock,
   Loader2,
+  ArrowLeft,
 } from "lucide-react";
 import { getServices, getProducts, getClients, createPayment } from "@/lib/api";
 
@@ -184,11 +185,21 @@ export function PaymentPOS({ onPageChange }) {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Point of Sale</h1>
-          <p className="text-muted-foreground">
-            Process payments and manage transactions
-          </p>
+        <div className="flex items-center space-x-4">
+          <Button
+            variant="outline"
+            onClick={() => onPageChange("dashboard")}
+            className="border-border hover:bg-primary/5"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Point of Sale</h1>
+            <p className="text-muted-foreground">
+              Process payments and manage transactions
+            </p>
+          </div>
         </div>
         <div className="flex space-x-2">
           <Button

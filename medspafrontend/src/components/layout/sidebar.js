@@ -217,12 +217,6 @@ const navigationItems = [
       },
     ],
   },
-  {
-    id: "support",
-    label: "Support",
-    icon: HelpCircle,
-    roles: ["admin", "provider", "reception", "client"],
-  },
 ];
 
 export function Sidebar({ currentPage, onPageChange }) {

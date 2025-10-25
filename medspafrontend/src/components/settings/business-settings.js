@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -33,21 +33,22 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
+import { getBusinessSettings, updateBusinessSettings } from "@/lib/api";
 
 export function BusinessSettings({ onPageChange }) {
   const [businessData, setBusinessData] = useState({
-    businessName: "MediSpa Wellness Center",
-    businessType: "Medical Spa",
-    licenseNumber: "MED-2024-001",
-    taxId: "12-3456789",
-    website: "https://www.medispa-wellness.com",
-    description: "Premier medical spa offering advanced aesthetic treatments and wellness services.",
-    address: "123 Medical Plaza",
-    city: "New York",
-    state: "NY",
-    zipCode: "10001",
-    phone: "(555) 123-4567",
-    email: "info@medispa-wellness.com",
+    business_name: "",
+    business_type: "",
+    license_number: "",
+    tax_id: "",
+    website: "",
+    description: "",
+    address: "",
+    city: "",
+    state: "",
+    zip_code: "",
+    phone: "",
+    email: "",
     hours: {
       monday: { open: "09:00", close: "18:00", closed: false },
       tuesday: { open: "09:00", close: "18:00", closed: false },
@@ -59,8 +60,8 @@ export function BusinessSettings({ onPageChange }) {
     },
     currency: "USD",
     timezone: "America/New_York",
-    dateFormat: "MM/DD/YYYY",
-    timeFormat: "12",
+    date_format: "MM/DD/YYYY",
+    time_format: "12",
     features: {
       onlineBooking: true,
       clientPortal: true,
@@ -69,40 +70,48 @@ export function BusinessSettings({ onPageChange }) {
       reporting: true,
       complianceTracking: true,
     },
-    locations: [
-      {
-        id: "1",
-        name: "Downtown Clinic",
-        address: "123 Medical Plaza",
-        city: "New York",
-        state: "NY",
-        zipCode: "10001",
-        phone: "(555) 123-4567",
-        isActive: true,
-      },
-      {
-        id: "2",
-        name: "Westside Location",
-        address: "456 Oak Avenue",
-        city: "New York",
-        state: "NY",
-        zipCode: "10002",
-        phone: "(555) 234-5678",
-        isActive: true,
-      },
-    ],
+    locations: [],
   });
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
   const [newLocation, setNewLocation] = useState({
     name: "",
     address: "",
     city: "",
     state: "",
-    zipCode: "",
+    zip_code: "",
     phone: "",
   });
+
+  // Fetch business settings on component mount
+  useEffect(() => {
+    async function fetchSettings() {
+      try {
+        setIsLoading(true);
+        setError("");
+        
+        // Check if user is authenticated
+        const token = localStorage.getItem("token");
+        if (!token) {
+          setError("Please log in to access business settings");
+          setIsLoading(false);
+          return;
+        }
+        
+        const settings = await getBusinessSettings();
+        setBusinessData(settings);
+      } catch (error) {
+        console.error("Error fetching business settings:", error);
+        setError("Failed to load business settings: " + error.message);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchSettings();
+  }, []);
 
   const handleInputChange = (field, value) => {
     setBusinessData(prev => ({ ...prev, [field]: value }));
@@ -151,7 +160,7 @@ export function BusinessSettings({ onPageChange }) {
         address: "",
         city: "",
         state: "",
-        zipCode: "",
+        zip_code: "",
         phone: "",
       });
     }
@@ -166,13 +175,15 @@ export function BusinessSettings({ onPageChange }) {
 
   const handleSave = async () => {
     setIsSaving(true);
+    setError("");
     try {
       console.log("Saving business settings:", businessData);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await updateBusinessSettings(businessData);
       alert("Business settings updated successfully!");
       setIsEditing(false);
     } catch (error) {
       console.error("Error saving settings:", error);
+      setError("Error saving settings: " + error.message);
       alert("Error saving settings. Please try again.");
     } finally {
       setIsSaving(false);
@@ -262,7 +273,24 @@ export function BusinessSettings({ onPageChange }) {
         </div>
       </div>
 
-      {/* Business Information */}
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
+
+      {/* Loading State */}
+      {isLoading && (
+        <div className="text-center py-8">
+          <div className="text-muted-foreground">Loading business settings...</div>
+        </div>
+      )}
+
+      {/* Main Content - Only show when not loading */}
+      {!isLoading && (
+        <>
+          {/* Business Information */}
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-foreground flex items-center">
@@ -276,8 +304,8 @@ export function BusinessSettings({ onPageChange }) {
               <Label htmlFor="businessName">Business Name</Label>
               <Input
                 id="businessName"
-                value={businessData.businessName}
-                onChange={(e) => handleInputChange("businessName", e.target.value)}
+                value={businessData.business_name}
+                onChange={(e) => handleInputChange("business_name", e.target.value)}
                 disabled={!isEditing}
                 className="bg-input-background border-border"
               />
@@ -285,8 +313,8 @@ export function BusinessSettings({ onPageChange }) {
             <div>
               <Label htmlFor="businessType">Business Type</Label>
               <Select 
-                value={businessData.businessType} 
-                onValueChange={(value) => handleInputChange("businessType", value)}
+                value={businessData.business_type} 
+                onValueChange={(value) => handleInputChange("business_type", value)}
                 disabled={!isEditing}
               >
                 <SelectTrigger className="bg-input-background border-border">
@@ -308,8 +336,8 @@ export function BusinessSettings({ onPageChange }) {
               <Label htmlFor="licenseNumber">License Number</Label>
               <Input
                 id="licenseNumber"
-                value={businessData.licenseNumber}
-                onChange={(e) => handleInputChange("licenseNumber", e.target.value)}
+                value={businessData.license_number}
+                onChange={(e) => handleInputChange("license_number", e.target.value)}
                 disabled={!isEditing}
                 className="bg-input-background border-border"
               />
@@ -318,8 +346,8 @@ export function BusinessSettings({ onPageChange }) {
               <Label htmlFor="taxId">Tax ID</Label>
               <Input
                 id="taxId"
-                value={businessData.taxId}
-                onChange={(e) => handleInputChange("taxId", e.target.value)}
+                value={businessData.tax_id}
+                onChange={(e) => handleInputChange("tax_id", e.target.value)}
                 disabled={!isEditing}
                 className="bg-input-background border-border"
               />
@@ -396,8 +424,8 @@ export function BusinessSettings({ onPageChange }) {
               <Label htmlFor="zipCode">ZIP Code</Label>
               <Input
                 id="zipCode"
-                value={businessData.zipCode}
-                onChange={(e) => handleInputChange("zipCode", e.target.value)}
+                value={businessData.zip_code}
+                onChange={(e) => handleInputChange("zip_code", e.target.value)}
                 disabled={!isEditing}
                 className="bg-input-background border-border"
               />
@@ -529,8 +557,8 @@ export function BusinessSettings({ onPageChange }) {
             <div>
               <Label htmlFor="timeFormat">Time Format</Label>
               <Select 
-                value={businessData.timeFormat} 
-                onValueChange={(value) => handleInputChange("timeFormat", value)}
+                value={businessData.time_format} 
+                onValueChange={(value) => handleInputChange("time_format", value)}
                 disabled={!isEditing}
               >
                 <SelectTrigger className="bg-input-background border-border">
@@ -601,7 +629,7 @@ export function BusinessSettings({ onPageChange }) {
               </div>
               <div className="text-sm text-muted-foreground">
                 <p>{location.address}</p>
-                <p>{location.city}, {location.state} {location.zipCode}</p>
+                <p>{location.city}, {location.state} {location.zip_code}</p>
                 <p>{location.phone}</p>
               </div>
             </div>
@@ -665,8 +693,8 @@ export function BusinessSettings({ onPageChange }) {
                   <Label htmlFor="locationZip">ZIP Code</Label>
                   <Input
                     id="locationZip"
-                    value={newLocation.zipCode}
-                    onChange={(e) => handleLocationInputChange("zipCode", e.target.value)}
+                    value={newLocation.zip_code}
+                    onChange={(e) => handleLocationInputChange("zip_code", e.target.value)}
                     placeholder="Enter ZIP code"
                     className="bg-input-background border-border"
                   />
@@ -683,6 +711,8 @@ export function BusinessSettings({ onPageChange }) {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }

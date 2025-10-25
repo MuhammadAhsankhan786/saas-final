@@ -128,10 +128,40 @@ export function RevenueReports({ onPageChange }) {
     return change > 0 ? "text-green-600" : "text-red-600";
   };
 
-  const handleExportReport = () => {
-    // Here you would typically export the report
-    console.log("Exporting revenue report...");
-    alert("Revenue report exported successfully!");
+  const handleExportReport = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        alert("Please log in to download reports");
+        return;
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/admin/reports/revenue/pdf?period=${timeRange}`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/pdf",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to generate PDF: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `revenue-report-${timeRange}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Error downloading revenue report:", error);
+      alert("Failed to generate PDF. Please try again.");
+    }
   };
 
   if (loading) {
@@ -194,27 +224,35 @@ export function RevenueReports({ onPageChange }) {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {monthlyComparison.map((item, index) => (
-          <Card key={index} className="bg-card border-border">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base text-foreground flex items-center">
-                <DollarSign className="mr-2 h-4 w-4" />
-                {item.metric}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-foreground">
-                {item.metric.includes("Revenue") ? formatCurrency(item.current) : item.current}
-              </div>
-              <div className="flex items-center space-x-1 mt-1">
-                {getChangeIcon(item.change)}
-                <span className={`text-sm ${getChangeColor(item.change)}`}>
-                  {formatPercentage(item.change)} from last month
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        {monthlyComparison.map((item, index) => {
+          // Handle both API data structure (month, revenue, growth) and mock data structure (metric, current, change)
+          const metric = item.metric || item.month || "Unknown Metric";
+          const current = item.current || item.revenue || 0;
+          const change = item.change || item.growth || 0;
+          const isRevenue = (item.metric && item.metric.includes("Revenue")) || (item.month && item.revenue !== undefined);
+          
+          return (
+            <Card key={index} className="bg-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base text-foreground flex items-center">
+                  <DollarSign className="mr-2 h-4 w-4" />
+                  {metric}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-foreground">
+                  {isRevenue ? formatCurrency(current) : current}
+                </div>
+                <div className="flex items-center space-x-1 mt-1">
+                  {getChangeIcon(change)}
+                  <span className={`text-sm ${getChangeColor(change)}`}>
+                    {formatPercentage(change)} from last month
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Chart Controls */}
@@ -337,19 +375,19 @@ export function RevenueReports({ onPageChange }) {
           <CardContent>
             <div className="space-y-4">
               {serviceRevenue.map((service, index) => (
-                <div key={service.service} className="flex items-center justify-between">
+                <div key={service.service || index} className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <div
                       className="w-4 h-4 rounded-full"
                       style={{ backgroundColor: COLORS[index % COLORS.length] }}
                     />
                     <div>
-                      <p className="font-medium text-foreground">{service.service}</p>
-                      <p className="text-sm text-muted-foreground">{service.percentage}% of total</p>
+                      <p className="font-medium text-foreground">{service.service || "Unknown Service"}</p>
+                      <p className="text-sm text-muted-foreground">{service.percentage || 0}% of total</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium text-foreground">{formatCurrency(service.revenue)}</p>
+                    <p className="font-medium text-foreground">{formatCurrency(service.revenue || 0)}</p>
                   </div>
                 </div>
               ))}
@@ -379,19 +417,21 @@ export function RevenueReports({ onPageChange }) {
               <TableBody>
                 {revenueData.map((month, index) => {
                   const prevMonth = index > 0 ? revenueData[index - 1] : null;
-                  const growthRate = prevMonth 
+                  const growthRate = prevMonth && month.revenue && prevMonth.revenue
                     ? ((month.revenue - prevMonth.revenue) / prevMonth.revenue) * 100 
                     : 0;
-                  const avgRevenuePerAppointment = month.revenue / month.appointments;
+                  const avgRevenuePerAppointment = month.revenue && month.appointments
+                    ? month.revenue / month.appointments
+                    : 0;
 
                   return (
-                    <TableRow key={month.month}>
-                      <TableCell className="font-medium text-foreground">{month.month}</TableCell>
+                    <TableRow key={month.month || index}>
+                      <TableCell className="font-medium text-foreground">{month.month || "Unknown"}</TableCell>
                       <TableCell className="font-medium text-foreground">
-                        {formatCurrency(month.revenue)}
+                        {formatCurrency(month.revenue || 0)}
                       </TableCell>
-                      <TableCell className="text-foreground">{month.appointments}</TableCell>
-                      <TableCell className="text-foreground">{month.newClients}</TableCell>
+                      <TableCell className="text-foreground">{month.appointments || 0}</TableCell>
+                      <TableCell className="text-foreground">{month.newClients || 0}</TableCell>
                       <TableCell className="text-foreground">
                         {formatCurrency(avgRevenuePerAppointment)}
                       </TableCell>

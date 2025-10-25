@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Barryvdh\DomPDF\Facade\Pdf as PDF;
 
 class ProductController extends Controller
 {
@@ -85,5 +86,39 @@ class ProductController extends Controller
     {
         $product->delete();
         return response()->json(null, 204);
+    }
+
+    // Generate Inventory Report PDF
+    public function generateInventoryPDF(Request $request)
+    {
+        // Get all products with location
+        $products = Product::with('location')->get();
+        
+        // Calculate inventory statistics
+        $totalProducts = $products->count();
+        $activeProducts = $products->where('active', true)->count();
+        $lowStockProducts = $products->where('current_stock', '<=', 'minimum_stock')->count();
+        $totalValue = $products->sum(function($product) {
+            return $product->current_stock * $product->price;
+        });
+        
+        // Group by category
+        $categoryBreakdown = $products->groupBy('category')->map(function($categoryProducts, $category) {
+            return [
+                'category' => $category ?: 'Uncategorized',
+                'count' => $categoryProducts->count(),
+                'total_value' => $categoryProducts->sum(function($product) {
+                    return $product->current_stock * $product->price;
+                }),
+                'avg_price' => $categoryProducts->avg('price')
+            ];
+        })->sortByDesc('total_value');
+
+        $pdf = PDF::loadView('inventory.report', compact(
+            'products', 'totalProducts', 'activeProducts', 'lowStockProducts', 
+            'totalValue', 'categoryBreakdown'
+        ));
+        
+        return $pdf->download('inventory-report.pdf');
     }
 }

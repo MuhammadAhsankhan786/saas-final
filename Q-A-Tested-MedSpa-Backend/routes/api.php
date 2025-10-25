@@ -9,15 +9,18 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\StockNotificationController;
+use App\Http\Controllers\StockAlertController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\ClientController;
-use App\Http\Controllers\ServiceController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\BusinessSettingsController;
 /*
 |--------------------------------------------------------------------------
 | Public Routes
@@ -38,6 +41,16 @@ Route::middleware('auth:api')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::post('refresh', [AuthController::class, 'refresh']);
 
+    // 🔹 Profile Management (all authenticated users)
+    Route::get('profile', [ProfileController::class, 'getProfile']);
+    Route::put('profile', [ProfileController::class, 'updateProfile']);
+    Route::post('profile/photo', [ProfileController::class, 'uploadProfilePhoto']);
+    Route::delete('profile/photo', [ProfileController::class, 'deleteProfilePhoto']);
+
+    // 🔹 Business Settings Management (all authenticated users)
+    Route::get('business-settings', [BusinessSettingsController::class, 'index']);
+    Route::put('business-settings', [BusinessSettingsController::class, 'update']);
+
     /*
     |--------------------------------------------------------------------------
     | Admin routes
@@ -55,6 +68,7 @@ Route::middleware('auth:api')->group(function () {
         Route::post('payments/{payment}/confirm-stripe', [PaymentController::class, 'confirmStripePayment']);
         Route::get('payments/{payment}/receipt', [PaymentController::class, 'generateReceipt']);
 
+        Route::get('packages/pdf', [PackageController::class, 'generatePackagesPDF']);
         Route::apiResource('packages', PackageController::class);
         Route::post('packages/assign', [PackageController::class, 'assignToClient']);
 
@@ -73,16 +87,26 @@ Route::middleware('auth:api')->group(function () {
         // ✅ Inventory: Admin full control
         Route::apiResource('products', ProductController::class);
         Route::post('products/{product}/adjust', [StockAdjustmentController::class, 'store']);
+        Route::get('inventory/pdf', [ProductController::class, 'generateInventoryPDF']);
         Route::get('stock-notifications', [StockNotificationController::class, 'index']);
         Route::post('stock-notifications/{notification}/read', [StockNotificationController::class, 'markAsRead']);
+        
+        // Stock Alerts
+        Route::get('stock-alerts', [StockAlertController::class, 'index']);
+        Route::get('stock-alerts/statistics', [StockAlertController::class, 'statistics']);
+        Route::post('stock-alerts/{alert}/dismiss', [StockAlertController::class, 'dismiss']);
+        Route::post('stock-alerts/{alert}/resolve', [StockAlertController::class, 'resolve']);
 
         // Reports & Analytics
         Route::get('reports/revenue', [ReportsController::class, 'revenue']);
+        Route::get('reports/revenue/pdf', [ReportsController::class, 'generateRevenuePDF']);
         Route::get('reports/client-retention', [ReportsController::class, 'clientRetention']);
+        Route::get('clients/analytics/pdf', [ReportsController::class, 'generateClientAnalyticsPDF']);
         Route::get('reports/staff-performance', [ReportsController::class, 'staffPerformance']);
 
         // Locations Management
         Route::apiResource('locations', LocationController::class);
+        
     });
 
     /*
@@ -150,6 +174,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('notifications', [NotificationController::class, 'index']);
     Route::get('notifications/unread', [NotificationController::class, 'unread']);
     Route::post('notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    
     
     // Secure file access
     Route::get('files/consent-forms/{id}/{filename}', [FileController::class, 'consentForm']);

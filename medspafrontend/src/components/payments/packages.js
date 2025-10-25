@@ -46,6 +46,7 @@ import {
   Users,
   Clock,
   Search,
+  Download,
 } from "lucide-react";
 import {
   getPackages,
@@ -219,6 +220,42 @@ export function Packages({ onPageChange }) {
     setIsCreatePackageOpen(true);
   };
 
+  const handleExportPackages = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        alert("Please log in to download reports");
+        return;
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/admin/packages/pdf`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/pdf",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to generate PDF: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'packages-summary.pdf';
+      document.body.appendChild(a);
+      a.click();
+      
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Error downloading packages report:", error);
+      alert("Failed to generate PDF. Please try again.");
+    }
+  };
+
   const openAssignModal = () => {
     setAssignData({ client_id: "", package_id: "" });
     setIsAssignPackageOpen(true);
@@ -259,6 +296,14 @@ export function Packages({ onPageChange }) {
           </div>
         </div>
         <div className="flex space-x-2">
+          <Button
+            variant="outline"
+            onClick={handleExportPackages}
+            className="border-border hover:bg-primary/5"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Download Packages
+          </Button>
           <Button
             onClick={openAssignModal}
             variant="outline"

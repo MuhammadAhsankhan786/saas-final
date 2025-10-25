@@ -49,6 +49,7 @@ import {
   Box,
   Calendar,
   Loader2,
+  Download,
 } from "lucide-react";
 import { getProducts, createProduct, updateProduct, deleteProduct, adjustStock } from "@/lib/api";
 
@@ -85,7 +86,26 @@ export function InventoryProducts({ onPageChange }) {
       setError(null);
       try {
         const data = await getProducts();
-        setProducts(data || []);
+        // Map API data to expected format
+        const mappedProducts = (data || []).map(product => ({
+          id: product.id,
+          name: product.name || "Unknown Product",
+          sku: product.sku || "N/A",
+          category: product.category || "Uncategorized",
+          supplier: product.supplier || "Unknown Supplier",
+          cost: product.cost || 0, // Cost field - may not exist in API
+          selling_price: product.price || product.selling_price || 0,
+          current_stock: product.current_stock || 0,
+          min_stock: product.minimum_stock || product.min_stock || 0,
+          max_stock: product.max_stock || product.maximum_stock || 0,
+          unit: product.unit || "unit",
+          expiry_date: product.expiry_date,
+          description: product.description || "",
+          status: product.active ? "active" : "inactive",
+          last_restocked: product.last_restocked,
+          total_sold: product.total_sold || 0,
+        }));
+        setProducts(mappedProducts);
       } catch (err) {
         console.error("Error loading products:", err);
         setError("Failed to load products.");
@@ -98,9 +118,9 @@ export function InventoryProducts({ onPageChange }) {
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch = 
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.supplier.toLowerCase().includes(searchQuery.toLowerCase());
+      (product.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (product.sku || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (product.supplier || "").toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesCategory = categoryFilter === "All" || product.category === categoryFilter;
     const matchesStatus = statusFilter === "All" || product.status === statusFilter;
@@ -110,8 +130,11 @@ export function InventoryProducts({ onPageChange }) {
 
   // Helper function to determine product status
   const getProductStatus = (product) => {
-    if (product.current_stock === 0) return "out-of-stock";
-    if (product.current_stock <= product.min_stock) return "low-stock";
+    const currentStock = product.current_stock || 0;
+    const minStock = product.min_stock || 0;
+    
+    if (currentStock === 0) return "out-of-stock";
+    if (currentStock <= minStock) return "low-stock";
     return "in-stock";
   };
 
@@ -121,7 +144,11 @@ export function InventoryProducts({ onPageChange }) {
     return [...new Set(categories)];
   };
 
-  const totalValue = products.reduce((sum, product) => sum + (product.current_stock * product.cost), 0);
+  const totalValue = products.reduce((sum, product) => {
+    const currentStock = product.current_stock || 0;
+    const cost = product.cost || product.selling_price || 0; // Use selling_price as fallback for cost
+    return sum + (currentStock * cost);
+  }, 0);
   const lowStockItems = products.filter(p => p && getProductStatus(p) === "low-stock").length;
   const outOfStockItems = products.filter(p => p && getProductStatus(p) === "out-of-stock").length;
   const totalProducts = products.length;
@@ -236,6 +263,42 @@ export function InventoryProducts({ onPageChange }) {
     setNewProduct(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleExportInventory = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        alert("Please log in to download reports");
+        return;
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/admin/inventory/pdf`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/pdf",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to generate PDF: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'inventory-report.pdf';
+      document.body.appendChild(a);
+      a.click();
+      
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Error downloading inventory report:", error);
+      alert("Failed to generate PDF. Please try again.");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -272,192 +335,202 @@ export function InventoryProducts({ onPageChange }) {
             <p className="text-muted-foreground">Manage product inventory and stock levels</p>
           </div>
         </div>
-        <Dialog open={isCreateProductOpen} onOpenChange={setIsCreateProductOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              <Plus className="mr-2 h-4 w-4" />
-              New Product
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Add New Product</DialogTitle>
-              <DialogDescription>
-                Add a new product to your inventory
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="name">Product Name</Label>
-                  <Input
-                    id="name"
-                    value={newProduct.name}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    placeholder="Enter product name"
-                    className="bg-input-background border-border"
-                  />
+        <div className="flex space-x-2">
+          <Button
+            variant="outline"
+            onClick={handleExportInventory}
+            className="border-border hover:bg-primary/5"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export Inventory
+          </Button>
+          <Dialog open={isCreateProductOpen} onOpenChange={setIsCreateProductOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                <Plus className="mr-2 h-4 w-4" />
+                New Product
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add New Product</DialogTitle>
+                <DialogDescription>
+                  Add a new product to your inventory
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="name">Product Name</Label>
+                    <Input
+                      id="name"
+                      value={newProduct.name}
+                      onChange={(e) => handleInputChange("name", e.target.value)}
+                      placeholder="Enter product name"
+                      className="bg-input-background border-border"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="sku">SKU</Label>
+                    <Input
+                      id="sku"
+                      value={newProduct.sku}
+                      onChange={(e) => handleInputChange("sku", e.target.value)}
+                      placeholder="Enter SKU"
+                      className="bg-input-background border-border"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="sku">SKU</Label>
-                  <Input
-                    id="sku"
-                    value={newProduct.sku}
-                    onChange={(e) => handleInputChange("sku", e.target.value)}
-                    placeholder="Enter SKU"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="category">Category</Label>
-                  <Select value={newProduct.category} onValueChange={(value) => handleInputChange("category", value)}>
-                    <SelectTrigger className="bg-input-background border-border">
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {getUniqueCategories().map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {category}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="category">Category</Label>
+                    <Select value={newProduct.category} onValueChange={(value) => handleInputChange("category", value)}>
+                      <SelectTrigger className="bg-input-background border-border">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getUniqueCategories().map((category) => (
+                          <SelectItem key={category} value={category}>
+                            {category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="supplier">Supplier</Label>
+                    <Input
+                      id="supplier"
+                      value={newProduct.supplier}
+                      onChange={(e) => handleInputChange("supplier", e.target.value)}
+                      placeholder="Enter supplier name"
+                      className="bg-input-background border-border"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="supplier">Supplier</Label>
-                  <Input
-                    id="supplier"
-                    value={newProduct.supplier}
-                    onChange={(e) => handleInputChange("supplier", e.target.value)}
-                    placeholder="Enter supplier name"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="cost">Cost Price</Label>
-                  <Input
-                    id="cost"
-                    type="number"
-                    value={newProduct.cost}
-                    onChange={(e) => handleInputChange("cost", e.target.value)}
-                    placeholder="0.00"
-                    className="bg-input-background border-border"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="cost">Cost Price</Label>
+                    <Input
+                      id="cost"
+                      type="number"
+                      value={newProduct.cost}
+                      onChange={(e) => handleInputChange("cost", e.target.value)}
+                      placeholder="0.00"
+                      className="bg-input-background border-border"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="selling_price">Selling Price</Label>
+                    <Input
+                      id="selling_price"
+                      type="number"
+                      value={newProduct.selling_price}
+                      onChange={(e) => handleInputChange("selling_price", e.target.value)}
+                      placeholder="0.00"
+                      className="bg-input-background border-border"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="selling_price">Selling Price</Label>
-                  <Input
-                    id="selling_price"
-                    type="number"
-                    value={newProduct.selling_price}
-                    onChange={(e) => handleInputChange("selling_price", e.target.value)}
-                    placeholder="0.00"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="current_stock">Current Stock</Label>
-                  <Input
-                    id="current_stock"
-                    type="number"
-                    value={newProduct.current_stock}
-                    onChange={(e) => handleInputChange("current_stock", e.target.value)}
-                    placeholder="0"
-                    className="bg-input-background border-border"
-                  />
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="current_stock">Current Stock</Label>
+                    <Input
+                      id="current_stock"
+                      type="number"
+                      value={newProduct.current_stock}
+                      onChange={(e) => handleInputChange("current_stock", e.target.value)}
+                      placeholder="0"
+                      className="bg-input-background border-border"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="min_stock">Min Stock</Label>
+                    <Input
+                      id="min_stock"
+                      type="number"
+                      value={newProduct.min_stock}
+                      onChange={(e) => handleInputChange("min_stock", e.target.value)}
+                      placeholder="0"
+                      className="bg-input-background border-border"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="max_stock">Max Stock</Label>
+                    <Input
+                      id="max_stock"
+                      type="number"
+                      value={newProduct.max_stock}
+                      onChange={(e) => handleInputChange("max_stock", e.target.value)}
+                      placeholder="0"
+                      className="bg-input-background border-border"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="min_stock">Min Stock</Label>
-                  <Input
-                    id="min_stock"
-                    type="number"
-                    value={newProduct.min_stock}
-                    onChange={(e) => handleInputChange("min_stock", e.target.value)}
-                    placeholder="0"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="max_stock">Max Stock</Label>
-                  <Input
-                    id="max_stock"
-                    type="number"
-                    value={newProduct.max_stock}
-                    onChange={(e) => handleInputChange("max_stock", e.target.value)}
-                    placeholder="0"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="unit">Unit</Label>
+                    <Input
+                      id="unit"
+                      value={newProduct.unit}
+                      onChange={(e) => handleInputChange("unit", e.target.value)}
+                      placeholder="e.g., vial, syringe, bottle"
+                      className="bg-input-background border-border"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="expiry_date">Expiry Date</Label>
+                    <Input
+                      id="expiry_date"
+                      type="date"
+                      value={newProduct.expiry_date}
+                      onChange={(e) => handleInputChange("expiry_date", e.target.value)}
+                      className="bg-input-background border-border"
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <Label htmlFor="unit">Unit</Label>
-                  <Input
-                    id="unit"
-                    value={newProduct.unit}
-                    onChange={(e) => handleInputChange("unit", e.target.value)}
-                    placeholder="e.g., vial, syringe, bottle"
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={newProduct.description}
+                    onChange={(e) => handleInputChange("description", e.target.value)}
+                    placeholder="Product description..."
                     className="bg-input-background border-border"
+                    rows={3}
                   />
                 </div>
-                <div>
-                  <Label htmlFor="expiry_date">Expiry Date</Label>
-                  <Input
-                    id="expiry_date"
-                    type="date"
-                    value={newProduct.expiry_date}
-                    onChange={(e) => handleInputChange("expiry_date", e.target.value)}
-                    className="bg-input-background border-border"
-                  />
+
+                <div className="flex justify-end space-x-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsCreateProductOpen(false)}
+                    className="border-border hover:bg-primary/5"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCreateProduct}
+                    disabled={isProcessing}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                  >
+                    {isProcessing ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="mr-2 h-4 w-4" />
+                    )}
+                    {isProcessing ? "Adding..." : "Add Product"}
+                  </Button>
                 </div>
               </div>
-
-              <div>
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={newProduct.description}
-                  onChange={(e) => handleInputChange("description", e.target.value)}
-                  placeholder="Product description..."
-                  className="bg-input-background border-border"
-                  rows={3}
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsCreateProductOpen(false)}
-                  className="border-border hover:bg-primary/5"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateProduct}
-                  disabled={isProcessing}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                >
-                  {isProcessing ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="mr-2 h-4 w-4" />
-                  )}
-                  {isProcessing ? "Adding..." : "Add Product"}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -471,7 +544,7 @@ export function InventoryProducts({ onPageChange }) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-foreground">
-              ${totalValue.toLocaleString()}
+              ${(totalValue || 0).toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">Inventory value</p>
           </CardContent>
@@ -601,23 +674,23 @@ export function InventoryProducts({ onPageChange }) {
                     <TableRow key={product.id}>
                       <TableCell>
                         <div>
-                          <div className="font-medium text-foreground">{product.name}</div>
-                          <div className="text-sm text-muted-foreground">SKU: {product.sku}</div>
+                          <div className="font-medium text-foreground">{product.name || "Unknown Product"}</div>
+                          <div className="text-sm text-muted-foreground">SKU: {product.sku || "N/A"}</div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-foreground">{product.category}</TableCell>
+                      <TableCell className="text-foreground">{product.category || "N/A"}</TableCell>
                       <TableCell>
                         <div>
-                          <div className="font-medium text-foreground">{product.current_stock} {product.unit}</div>
+                          <div className="font-medium text-foreground">{product.current_stock || 0} {product.unit || ""}</div>
                           <div className="text-sm text-muted-foreground">
-                            Min: {product.min_stock} | Max: {product.max_stock}
+                            Min: {product.min_stock || 0} | Max: {product.max_stock || 0}
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div>
-                          <div className="font-medium text-foreground">${product.selling_price.toLocaleString()}</div>
-                          <div className="text-sm text-muted-foreground">Cost: ${product.cost.toLocaleString()}</div>
+                          <div className="font-medium text-foreground">${(product.selling_price || 0).toLocaleString()}</div>
+                          <div className="text-sm text-muted-foreground">Cost: ${(product.cost || 0).toLocaleString()}</div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -701,24 +774,24 @@ export function InventoryProducts({ onPageChange }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
                   <div>
                     <div className="text-sm text-muted-foreground">Product Name</div>
-                    <div className="font-medium text-foreground">{selectedProduct.name}</div>
+                    <div className="font-medium text-foreground">{selectedProduct.name || "Unknown Product"}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">SKU</div>
-                    <div className="font-medium text-foreground">{selectedProduct.sku}</div>
+                    <div className="font-medium text-foreground">{selectedProduct.sku || "N/A"}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Category</div>
-                    <div className="font-medium text-foreground">{selectedProduct.category}</div>
+                    <div className="font-medium text-foreground">{selectedProduct.category || "N/A"}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Supplier</div>
-                    <div className="font-medium text-foreground">{selectedProduct.supplier}</div>
+                    <div className="font-medium text-foreground">{selectedProduct.supplier || "N/A"}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Current Stock</div>
                     <div className="font-medium text-foreground">
-                      {selectedProduct.current_stock} {selectedProduct.unit}
+                      {selectedProduct.current_stock || 0} {selectedProduct.unit || ""}
                     </div>
                   </div>
                   <div>
@@ -743,19 +816,19 @@ export function InventoryProducts({ onPageChange }) {
                   <div>
                     <div className="text-sm text-muted-foreground">Cost Price</div>
                     <div className="font-medium text-foreground">
-                      ${selectedProduct.cost.toLocaleString()}
+                      ${(selectedProduct.cost || 0).toLocaleString()}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Selling Price</div>
                     <div className="font-medium text-foreground">
-                      ${selectedProduct.selling_price.toLocaleString()}
+                      ${(selectedProduct.selling_price || 0).toLocaleString()}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Profit Margin</div>
                     <div className="font-medium text-foreground">
-                      ${(selectedProduct.selling_price - selectedProduct.cost).toLocaleString()}
+                      ${((selectedProduct.selling_price || 0) - (selectedProduct.cost || 0)).toLocaleString()}
                     </div>
                   </div>
                 </div>
@@ -770,11 +843,11 @@ export function InventoryProducts({ onPageChange }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
                   <div>
                     <div className="text-sm text-muted-foreground">Min Stock Level</div>
-                    <div className="font-medium text-foreground">{selectedProduct.min_stock}</div>
+                    <div className="font-medium text-foreground">{selectedProduct.min_stock || 0}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Max Stock Level</div>
-                    <div className="font-medium text-foreground">{selectedProduct.max_stock}</div>
+                    <div className="font-medium text-foreground">{selectedProduct.max_stock || 0}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Last Restocked</div>

@@ -41,6 +41,7 @@ import {
   Edit,
   Trash2,
   MapPin,
+  ArrowLeft,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -209,13 +210,23 @@ export function ClientList({ onPageChange }) {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
-            Client Management
-          </h1>
-          <p className="text-muted-foreground">
-            Manage your client database and relationships
-          </p>
+        <div className="flex items-center space-x-4">
+          <Button
+            variant="outline"
+            onClick={() => onPageChange("dashboard")}
+            className="border-border hover:bg-primary/5"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">
+              Client Management
+            </h1>
+            <p className="text-muted-foreground">
+              Manage your client database and relationships
+            </p>
+          </div>
         </div>
         <Button
           onClick={openCreateModal}

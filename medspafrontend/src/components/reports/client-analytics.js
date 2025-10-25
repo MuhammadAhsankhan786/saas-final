@@ -181,14 +181,45 @@ export function ClientAnalytics({ onPageChange }) {
     }
   };
 
-  const handleExportReport = () => {
-    console.log("Exporting client analytics report...");
-    alert("Client analytics report exported successfully!");
+  const handleExportReport = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        alert("Please log in to download reports");
+        return;
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/admin/clients/analytics/pdf`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/pdf",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to generate PDF: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'client-analytics.pdf';
+      document.body.appendChild(a);
+      a.click();
+      
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Error downloading client analytics report:", error);
+      alert("Failed to generate PDF. Please try again.");
+    }
   };
 
-  const totalClients = clientGrowthData[clientGrowthData.length - 1].totalClients;
-  const newClientsThisMonth = clientGrowthData[clientGrowthData.length - 1].newClients;
-  const returningClientsThisMonth = clientGrowthData[clientGrowthData.length - 1].returningClients;
+  const totalClients = clientGrowthData && clientGrowthData.length > 0 ? clientGrowthData[clientGrowthData.length - 1].totalClients : 0;
+  const newClientsThisMonth = clientGrowthData && clientGrowthData.length > 0 ? clientGrowthData[clientGrowthData.length - 1].newClients : 0;
+  const returningClientsThisMonth = clientGrowthData && clientGrowthData.length > 0 ? clientGrowthData[clientGrowthData.length - 1].returningClients : 0;
   const clientRetentionRate = 85.2;
 
   if (loading) {
@@ -205,6 +236,21 @@ export function ClientAnalytics({ onPageChange }) {
       <div className="text-center p-8">
         <p className="text-red-500 mb-4">{error}</p>
         <Button onClick={() => window.location.reload()}>Retry</Button>
+      </div>
+    );
+  }
+
+  if (!clientGrowthData || clientGrowthData.length === 0) {
+    return (
+      <div className="text-center p-8">
+        <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-foreground mb-2">No Client Data Available</h3>
+        <p className="text-muted-foreground mb-4">
+          There are no clients in the system yet. Add some clients to see analytics data.
+        </p>
+        <Button onClick={() => onPageChange('clients')}>
+          Go to Clients
+        </Button>
       </div>
     );
   }
@@ -348,7 +394,7 @@ export function ClientAnalytics({ onPageChange }) {
           <div className="h-[400px]">
             <ResponsiveContainer width="100%" height="100%">
               {chartType === "line" ? (
-                <RechartsLineChart data={clientGrowthData}>
+                <RechartsLineChart data={clientGrowthData || []}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
@@ -379,7 +425,7 @@ export function ClientAnalytics({ onPageChange }) {
                   />
                 </RechartsLineChart>
               ) : (
-                <BarChart data={clientGrowthData}>
+                <BarChart data={clientGrowthData || []}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />

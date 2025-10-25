@@ -10,7 +10,7 @@ class ClientPackage extends Model
     use HasFactory;
 
     protected $fillable = [
-        'client_id', 'package_id', 'start_date', 'end_date', 'status'
+        'client_id', 'package_id', 'assigned_at'
     ];
 
     // Relations

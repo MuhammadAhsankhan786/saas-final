@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ArrowLeft } from "lucide-react";
 import {
   createAppointment,
   updateAppointment,
@@ -25,7 +26,7 @@ import {
   getClients,
 } from "@/lib/api";
 
-export default function AppointmentForm({ appointment = null, onSuccess }) {
+export default function AppointmentForm({ appointment = null, onSuccess, onPageChange }) {
   const [formData, setFormData] = useState({
     client_id: appointment?.client_id || "",
     provider_id: appointment?.provider_id || "none",
@@ -126,12 +127,33 @@ export default function AppointmentForm({ appointment = null, onSuccess }) {
   };
 
   return (
-    <Card className="w-full max-w-3xl mx-auto">
-      <CardHeader>
-        <CardTitle>
-          {appointment ? "Edit Appointment" : "Create Appointment"}
-        </CardTitle>
-      </CardHeader>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center space-x-4">
+        <Button
+          variant="outline"
+          onClick={() => onPageChange("dashboard")}
+          className="border-border hover:bg-primary/5"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Dashboard
+        </Button>
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">
+            {appointment ? "Edit Appointment" : "Create Appointment"}
+          </h1>
+          <p className="text-muted-foreground">
+            {appointment ? "Update appointment details" : "Schedule a new appointment"}
+          </p>
+        </div>
+      </div>
+
+      <Card className="w-full max-w-3xl mx-auto">
+        <CardHeader>
+          <CardTitle>
+            {appointment ? "Edit Appointment" : "Create Appointment"}
+          </CardTitle>
+        </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Client */}
@@ -322,5 +344,6 @@ export default function AppointmentForm({ appointment = null, onSuccess }) {
         </form>
       </CardContent>
     </Card>
+    </div>
   );
 }

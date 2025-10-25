@@ -37,9 +37,47 @@ export async function fetchWithAuth(url, options = {}) {
     }
     
     if (!res.ok) {
-      try {
-        const err = await res.json();
-        console.error("❌ API Error:", err);
+      // Check if the error response is JSON
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        try {
+          const err = await res.json();
+          console.error("❌ API Error:", err);
+          console.error("❌ Response status:", res.status);
+          console.error("❌ Response statusText:", res.statusText);
+          
+          // Handle specific error cases
+          if (res.status === 401) {
+            console.log("🔐 Unauthorized - clearing token and redirecting");
+            localStorage.removeItem("token");
+            window.location.href = "/login";
+            return;
+          }
+          
+          throw new Error(err.message || err.error || `API Error: ${res.status} ${res.statusText}`);
+        } catch (parseError) {
+          console.error("❌ Failed to parse error response:", parseError);
+          console.error("❌ Response status:", res.status);
+          console.error("❌ Response statusText:", res.statusText);
+          
+          // Try to get response text for debugging
+          try {
+            const text = await res.text();
+            console.error("❌ Response text:", text.substring(0, 500));
+          } catch (textError) {
+            console.error("❌ Could not get response text:", textError);
+          }
+          
+          throw new Error(`API Error: ${res.status} ${res.statusText}`);
+        }
+      } else {
+        // Non-JSON error response
+        try {
+          const text = await res.text();
+          console.error("❌ Non-JSON error response:", text.substring(0, 500));
+        } catch (textError) {
+          console.error("❌ Could not get error response text:", textError);
+        }
         
         // Handle specific error cases
         if (res.status === 401) {
@@ -49,16 +87,29 @@ export async function fetchWithAuth(url, options = {}) {
           return;
         }
         
-        throw new Error(err.message || `API Error: ${res.status} ${res.statusText}`);
-      } catch (parseError) {
-        console.error("❌ Failed to parse error response:", parseError);
         throw new Error(`API Error: ${res.status} ${res.statusText}`);
       }
     }
     
-    const data = await res.json();
-    console.log(`✅ API call successful for ${url}`);
-    return data;
+    try {
+      const data = await res.json();
+      console.log(`✅ API call successful for ${url}`);
+      return data;
+    } catch (jsonError) {
+      console.error("❌ JSON parsing error:", jsonError);
+      console.error("❌ Response status:", res.status);
+      console.error("❌ Content-Type:", res.headers.get("content-type"));
+      
+      // Try to get the raw response text for debugging
+      try {
+        const text = await res.text();
+        console.error("❌ Raw response text:", text.substring(0, 500));
+      } catch (textError) {
+        console.error("❌ Could not get response text:", textError);
+      }
+      
+      throw new Error(`Invalid JSON response from server. ${jsonError.message}`);
+    }
   } catch (error) {
     console.error(`❌ API call failed for ${url}:`, error);
     
@@ -342,7 +393,25 @@ export async function confirmStripePayment(paymentId, paymentIntentId) {
 }
 
 export async function generateReceipt(paymentId) {
-  return fetchWithAuth(`/admin/payments/${paymentId}/receipt`);
+  const token = localStorage.getItem("token");
+  if (!token) {
+    throw new Error("No authentication token found");
+  }
+
+  const response = await fetch(`${API_BASE}/admin/payments/${paymentId}/receipt`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Accept": "application/pdf",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to generate receipt: ${response.status}`);
+  }
+
+  // Return the blob for PDF download
+  return response.blob();
 }
 
 export async function getMyPayments() {
@@ -396,6 +465,28 @@ export async function markStockNotificationAsRead(notificationId) {
     method: "POST",
   });
 }
+
+// ✅ Stock Alerts API Functions
+export async function getStockAlerts() {
+  return fetchWithAuth("/admin/stock-alerts");
+}
+
+export async function getStockAlertStatistics() {
+  return fetchWithAuth("/admin/stock-alerts/statistics");
+}
+
+export async function dismissStockAlert(alertId) {
+  return fetchWithAuth(`/admin/stock-alerts/${alertId}/dismiss`, {
+    method: "POST",
+  });
+}
+
+export async function resolveStockAlert(alertId) {
+  return fetchWithAuth(`/admin/stock-alerts/${alertId}/resolve`, {
+    method: "POST",
+  });
+}
+
 
 // ✅ Notifications API Functions
 export async function getNotifications() {
@@ -472,8 +563,86 @@ export async function updateLocation(id, locationData) {
   });
 }
 
-export async function deleteLocation(id) {
-  return fetchWithAuth(`/admin/locations/${id}`, {
+// ✅ Business Settings API Functions
+export async function getBusinessSettings() {
+  return fetchWithAuth("/business-settings");
+}
+
+export async function updateBusinessSettings(settingsData) {
+  return fetchWithAuth("/business-settings", {
+    method: "PUT",
+    body: JSON.stringify(settingsData),
+  });
+}
+
+// ✅ Profile Management API Functions
+export async function getUserProfile() {
+  return fetchWithAuth("/profile");
+}
+
+export async function updateUserProfile(profileData) {
+  return fetchWithAuth("/profile", {
+    method: "PUT",
+    body: JSON.stringify(profileData),
+  });
+}
+
+export async function uploadProfilePhoto(file) {
+  const formData = new FormData();
+  formData.append('profile_photo', file);
+  
+  const token = localStorage.getItem("token");
+  const headers = {
+    "Accept": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  try {
+    console.log(`🔗 Uploading profile photo`);
+    const res = await fetch(`${API_BASE}/profile/photo`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    
+    if (!res.ok) {
+      // Check if the error response is JSON
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        try {
+          const error = await res.json();
+          throw new Error(error.message || `Upload failed: ${res.status} ${res.statusText}`);
+        } catch (parseError) {
+          console.error("❌ Failed to parse upload error response:", parseError);
+          throw new Error(`Upload failed: ${res.status} ${res.statusText}`);
+        }
+      } else {
+        throw new Error(`Upload failed: ${res.status} ${res.statusText}`);
+      }
+    }
+    
+    // Check if the success response is JSON
+    const contentType = res.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      try {
+        const data = await res.json();
+        console.log(`✅ Profile photo uploaded successfully`);
+        return data;
+      } catch (parseError) {
+        console.error("❌ Failed to parse upload success response:", parseError);
+        throw new Error("Invalid JSON response from server");
+      }
+    } else {
+      throw new Error("Server returned non-JSON response");
+    }
+  } catch (error) {
+    console.error(`❌ Profile photo upload failed:`, error);
+    throw error;
+  }
+}
+
+export async function deleteProfilePhoto() {
+  return fetchWithAuth("/profile/photo", {
     method: "DELETE",
   });
 }

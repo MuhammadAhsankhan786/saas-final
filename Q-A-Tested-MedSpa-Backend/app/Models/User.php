@@ -17,6 +17,22 @@ class User extends Authenticatable implements JWTSubject
         'password',
         'role',
         'location_id',
+        'phone',
+        'first_name',
+        'last_name',
+        'title',
+        'department',
+        'bio',
+        'address',
+        'city',
+        'state',
+        'zip_code',
+        'date_of_birth',
+        'emergency_contact',
+        'emergency_phone',
+        'profile_image',
+        'notification_preferences',
+        'privacy_settings',
     ];
 
     protected $hidden = [
@@ -29,6 +45,9 @@ class User extends Authenticatable implements JWTSubject
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'date_of_birth' => 'date',
+            'notification_preferences' => 'array',
+            'privacy_settings' => 'array',
         ];
     }
 

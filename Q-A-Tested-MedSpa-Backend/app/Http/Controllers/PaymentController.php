@@ -184,13 +184,10 @@ class PaymentController extends Controller
         }
 
         $pdf = PDF::loadView('payments.receipt', compact('payment'));
-
-        // Save PDF locally (optional)
-        $filename = 'payment_receipt_'.$payment->id.'.pdf';
-        $path = storage_path('app/public/receipts/'.$filename);
-        $pdf->save($path);
-
-        return $pdf->download($filename); // Direct download
+        
+        $filename = 'receipt-'.$payment->id.'.pdf';
+        
+        return $pdf->download($filename);
     }
 
     // 🔹 Other methods: show, update, destroy remain unchanged
