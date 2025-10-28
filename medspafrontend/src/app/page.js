@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { Login } from "../components/auth/login";
 import { Sidebar } from "../components/layout/sidebar";
@@ -12,8 +12,9 @@ import "../globals.css";
 import styles from "./page.module.css";
 import { Toaster } from "../components/ui/sonner";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 
-// Pages / placeholders
+// ✅ Synchronous imports for frequently used components
 import { AppointmentCalendar } from "../components/appointments/appointment-calendar";
 import { AppointmentBooking } from "../components/appointments/appointment-booking";
 import { AppointmentList } from "../components/appointments/appointment-list";
@@ -23,20 +24,31 @@ import { ConsentForms } from "../components/treatments/consent-forms";
 import { SOAPNotes } from "../components/treatments/soap-notes";
 import { BeforeAfterPhotos } from "../components/treatments/before-after-photos";
 import { PaymentPOS } from "../components/payments/payment-pos";
-import { PaymentHistory } from "../components/payments/payment-history";
 import { Packages } from "../components/payments/packages";
 import { InventoryProducts } from "../components/inventory/inventory-products";
 import { StockAlerts } from "../components/inventory/stock-alerts";
-import { RevenueReports } from "../components/reports/revenue-reports";
-import { ClientAnalytics } from "../components/reports/client-analytics";
-import { StaffPerformance } from "../components/reports/staff-performance";
-import { AuditLog } from "../components/compliance/audit-log";
-import { ComplianceAlerts } from "../components/compliance/compliance-alerts";
 import { ProfileSettings } from "../components/settings/profile-settings";
 import { BusinessSettings } from "../components/settings/business-settings";
 import { StaffManagement } from "../components/settings/staff-management";
 import LocationsPage from "../pages/admin/locations";
-import { AuthProvider, useAuth } from "@/context/AuthContext";
+
+// ⚡ Lazy load heavy components (Reports, Compliance, Payment History)
+const RevenueReports = lazy(() => import("../components/reports/revenue-reports").then(m => ({ default: m.RevenueReports })));
+const ClientAnalytics = lazy(() => import("../components/reports/client-analytics").then(m => ({ default: m.ClientAnalytics })));
+const StaffPerformance = lazy(() => import("../components/reports/staff-performance").then(m => ({ default: m.StaffPerformance })));
+const AuditLog = lazy(() => import("../components/compliance/audit-log").then(m => ({ default: m.AuditLog })));
+const ComplianceAlerts = lazy(() => import("../components/compliance/compliance-alerts").then(m => ({ default: m.ComplianceAlerts })));
+const PaymentHistory = lazy(() => import("../components/payments/payment-history").then(m => ({ default: m.PaymentHistory })));
+
+// Loading fallback component
+const LoadingFallback = () => (
+  <div className="flex h-96 items-center justify-center">
+    <div className="text-center">
+      <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
+      <p className="mt-4 text-sm text-muted-foreground">Loading...</p>
+    </div>
+  </div>
+);
 
 
 function AppContent() {
@@ -117,50 +129,151 @@ function AppContent() {
     if (currentPage === "dashboard") return renderDashboard();
 
     switch (currentPage) {
+      // Admin-only pages
       case "locations/list":
-        return <LocationsPage onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <LocationsPage onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "appointments/calendar":
-        return <AppointmentCalendar onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "provider", "reception"]}>
+            <AppointmentCalendar onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "appointments/book":
-        return <AppointmentBooking onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["reception", "client"]}>
+            <AppointmentBooking onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "appointments/list":
-        return <AppointmentList onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "provider", "reception"]}>
+            <AppointmentList onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "clients/list":
-        return <ClientList onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "provider", "reception"]}>
+            <ClientList onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "clients/add":
-        return <AddClient onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "reception"]}>
+            <AddClient onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "treatments/consents":
-        return <ConsentForms onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "provider"]}>
+            <ConsentForms onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "treatments/notes":
-        return <SOAPNotes onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "provider"]}>
+            <SOAPNotes onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "treatments/photos":
-        return <BeforeAfterPhotos onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "provider"]}>
+            <BeforeAfterPhotos onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "payments/pos":
-        return <PaymentPOS onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "reception"]}>
+            <PaymentPOS onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "payments/history":
-        return <PaymentHistory onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "reception", "client"]}>
+            <Suspense fallback={<LoadingFallback />}>
+              <PaymentHistory onPageChange={handlePageChange} />
+            </Suspense>
+          </ProtectedRoute>
+        );
       case "payments/packages":
-        return <Packages onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "reception", "client"]}>
+            <Packages onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "inventory/products":
-        return <InventoryProducts onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "provider"]}>
+            <InventoryProducts onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "inventory/alerts":
-        return <StockAlerts onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "provider"]}>
+            <StockAlerts onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "reports/revenue":
-        return <RevenueReports onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <Suspense fallback={<LoadingFallback />}>
+              <RevenueReports onPageChange={handlePageChange} />
+            </Suspense>
+          </ProtectedRoute>
+        );
       case "reports/clients":
-        return <ClientAnalytics onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <Suspense fallback={<LoadingFallback />}>
+              <ClientAnalytics onPageChange={handlePageChange} />
+            </Suspense>
+          </ProtectedRoute>
+        );
       case "reports/staff":
-        return <StaffPerformance onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <Suspense fallback={<LoadingFallback />}>
+              <StaffPerformance onPageChange={handlePageChange} />
+            </Suspense>
+          </ProtectedRoute>
+        );
       case "compliance/audit":
-        return <AuditLog onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <Suspense fallback={<LoadingFallback />}>
+              <AuditLog onPageChange={handlePageChange} />
+            </Suspense>
+          </ProtectedRoute>
+        );
       case "compliance/alerts":
-        return <ComplianceAlerts onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "provider"]}>
+            <Suspense fallback={<LoadingFallback />}>
+              <ComplianceAlerts onPageChange={handlePageChange} />
+            </Suspense>
+          </ProtectedRoute>
+        );
       case "settings/profile":
-        return <ProfileSettings onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin", "provider", "reception", "client"]}>
+            <ProfileSettings onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "settings/business":
-        return <BusinessSettings onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <BusinessSettings onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "settings/staff":
-        return <StaffManagement onPageChange={handlePageChange} />;
+        return (
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <StaffManagement onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       default:
         return renderDashboard();
     }
