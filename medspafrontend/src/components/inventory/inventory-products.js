@@ -63,20 +63,21 @@ export function InventoryProducts({ onPageChange }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isCreateProductOpen, setIsCreateProductOpen] = useState(false);
+  const [isEditProductOpen, setIsEditProductOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [newProduct, setNewProduct] = useState({
+    // Required fields
     name: "",
     sku: "",
     category: "",
-    supplier: "",
-    cost: "",
-    selling_price: "",
+    price: "",
     current_stock: "",
-    min_stock: "",
-    max_stock: "",
-    unit: "",
+    location_id: "",
+    // Optional fields
+    lot_number: "",
     expiry_date: "",
-    description: "",
+    low_stock_threshold: "",
   });
 
   // Load products from API
@@ -185,40 +186,188 @@ export function InventoryProducts({ onPageChange }) {
   };
 
   const handleCreateProduct = async () => {
+    // Client-side validation for required fields
+    if (!newProduct.name || newProduct.name.trim() === "") {
+      alert("❌ Error: Product name is required.\n\nPlease enter a product name.");
+      return;
+    }
+    
+    if (!newProduct.sku || newProduct.sku.trim() === "") {
+      alert("❌ Error: SKU is required.\n\nPlease enter a unique SKU.");
+      return;
+    }
+    
+    if (!newProduct.category || newProduct.category.trim() === "") {
+      alert("❌ Error: Category is required.\n\nPlease enter a category.");
+      return;
+    }
+    
+    if (!newProduct.price || parseFloat(newProduct.price) <= 0) {
+      alert("❌ Error: Price is required.\n\nPlease enter a valid price greater than 0.");
+      return;
+    }
+    
+    if (newProduct.current_stock === "" || parseInt(newProduct.current_stock) < 0) {
+      alert("❌ Error: Stock is required.\n\nPlease enter a valid stock quantity.");
+      return;
+    }
+    
+    if (!newProduct.location_id || parseInt(newProduct.location_id) <= 0) {
+      alert("❌ Error: Location is required.\n\nPlease enter a valid location ID (starting from 1).");
+      return;
+    }
+    
     setIsProcessing(true);
     setError(null);
     try {
-      await createProduct(newProduct);
+      // Map frontend fields to backend API format - exact match
+      const productData = {
+        // Required fields
+        name: newProduct.name,
+        sku: newProduct.sku,
+        category: newProduct.category,
+        price: parseFloat(newProduct.price),
+        current_stock: parseInt(newProduct.current_stock),
+        location_id: parseInt(newProduct.location_id),
+        
+        // Optional fields
+        lot_number: newProduct.lot_number || null,
+        expiry_date: newProduct.expiry_date || null,
+        low_stock_threshold: newProduct.low_stock_threshold ? parseInt(newProduct.low_stock_threshold) : null,
+      };
+      
+      const result = await createProduct(productData);
+      
+      // Success message
+      alert("✅ Success!\n\nProduct has been added successfully!");
+      
       // Reload products
       const data = await getProducts();
-      setProducts(data || []);
+      setProducts((data || []).map(product => ({
+        id: product.id,
+        name: product.name || "Unknown Product",
+        sku: product.sku || "N/A",
+        category: product.category || "Uncategorized",
+        supplier: "Unknown Supplier",
+        cost: 0,
+        selling_price: product.price || 0,
+        current_stock: product.current_stock || 0,
+        min_stock: product.minimum_stock || 0,
+        max_stock: product.maximum_stock || 0,
+        unit: product.unit || "unit",
+        expiry_date: product.expiry_date,
+        description: "",
+        status: product.active ? "active" : "inactive",
+        last_restocked: null,
+        total_sold: 0,
+      })));
+      
       setIsCreateProductOpen(false);
       setNewProduct({
+        // Required fields
         name: "",
         sku: "",
         category: "",
-        supplier: "",
-        cost: "",
-        selling_price: "",
+        price: "",
         current_stock: "",
-        min_stock: "",
-        max_stock: "",
-        unit: "",
+        location_id: "",
+        // Optional fields
+        lot_number: "",
         expiry_date: "",
-        description: "",
+        low_stock_threshold: "",
       });
     } catch (err) {
-      console.error("Error creating product:", err);
-      setError(err.message || "Failed to create product.");
+      // Parse error message for user-friendly display without console logs
+      let errorMessage = "Please fill all required fields correctly.";
+      
+      if (err.message) {
+        errorMessage = err.message;
+      } else if (err.errors) {
+        const errorKeys = Object.keys(err.errors);
+        if (errorKeys.length > 0) {
+          errorMessage = Object.values(err.errors).flat().join('\n');
+        }
+      }
+      
+      // Show clean, user-friendly alert
+      alert(`❌ Validation Error\n\n${errorMessage}\n\nPlease correct the errors and try again.`);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleEditProduct = (productId) => {
-    // Here you would typically open an edit modal
-    console.log(`Editing product ${productId}`);
-    alert("Edit product functionality would open here");
+  const handleEditProduct = async (product) => {
+    if (!product || !product.id) {
+      alert("❌ Error\n\nInvalid product selected for editing.");
+      return;
+    }
+    
+    // Set the editing product and open edit modal
+    setEditingProduct(product);
+    setIsEditProductOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingProduct) return;
+    
+    setIsProcessing(true);
+    setError(null);
+    try {
+      // Map frontend fields to backend API format
+      const productData = {
+        name: editingProduct.name,
+        sku: editingProduct.sku,
+        category: editingProduct.category || null,
+        price: parseFloat(editingProduct.selling_price) || 0,
+        current_stock: parseInt(editingProduct.current_stock) || 0,
+        minimum_stock: parseInt(editingProduct.min_stock) || 0,
+        low_stock_threshold: parseInt(editingProduct.low_stock_threshold) || 0,
+        unit: editingProduct.unit || null,
+        expiry_date: editingProduct.expiry_date || null,
+        location_id: parseInt(editingProduct.location_id) || 1,
+        active: true,
+      };
+      
+      await updateProduct(editingProduct.id, productData);
+      
+      // Success message
+      alert("✅ Success!\n\nProduct has been updated successfully!");
+      
+      // Close edit modal
+      setIsEditProductOpen(false);
+      setEditingProduct(null);
+      
+      // Reload products with proper mapping
+      const data = await getProducts();
+      setProducts((data || []).map(product => ({
+        id: product.id,
+        name: product.name || "Unknown Product",
+        sku: product.sku || "N/A",
+        category: product.category || "Uncategorized",
+        supplier: "Unknown Supplier",
+        cost: 0,
+        selling_price: product.price || 0,
+        current_stock: product.current_stock || 0,
+        min_stock: product.minimum_stock || 0,
+        max_stock: product.maximum_stock || 0,
+        unit: product.unit || "unit",
+        expiry_date: product.expiry_date,
+        description: "",
+        status: product.active ? "active" : "inactive",
+        last_restocked: null,
+        total_sold: 0,
+      })));
+    } catch (err) {
+      // Show user-friendly error without console logs
+      const errorMessage = err.message || "Failed to update product. Please try again.";
+      alert(`❌ Update Failed\n\n${errorMessage}\n\nPlease correct the errors and try again.`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleEditInputChange = (field, value) => {
+    setEditingProduct(prev => ({ ...prev, [field]: value }));
   };
 
   const handleDeleteProduct = async (productId) => {
@@ -227,12 +376,40 @@ export function InventoryProducts({ onPageChange }) {
       setError(null);
       try {
         await deleteProduct(productId);
-        // Reload products
+        
+        // Success message
+        alert("✅ Success!\n\nProduct has been deleted successfully!");
+        
+        // Close details modal if open
+        if (isDetailsOpen && selectedProduct && selectedProduct.id === productId) {
+          setIsDetailsOpen(false);
+          setSelectedProduct(null);
+        }
+        
+        // Reload products with proper mapping
         const data = await getProducts();
-        setProducts(data || []);
+        setProducts((data || []).map(product => ({
+          id: product.id,
+          name: product.name || "Unknown Product",
+          sku: product.sku || "N/A",
+          category: product.category || "Uncategorized",
+          supplier: "Unknown Supplier",
+          cost: 0,
+          selling_price: product.price || 0,
+          current_stock: product.current_stock || 0,
+          min_stock: product.minimum_stock || 0,
+          max_stock: product.maximum_stock || 0,
+          unit: product.unit || "unit",
+          expiry_date: product.expiry_date,
+          description: "",
+          status: product.active ? "active" : "inactive",
+          last_restocked: null,
+          total_sold: 0,
+        })));
       } catch (err) {
-        console.error("Error deleting product:", err);
-        setError(err.message || "Failed to delete product.");
+        // Show user-friendly error
+        const errorMessage = err.message || "Failed to delete product. Please try again.";
+        alert(`❌ Delete Failed\n\n${errorMessage}`);
       } finally {
         setIsProcessing(false);
       }
@@ -248,9 +425,27 @@ export function InventoryProducts({ onPageChange }) {
         reason: "restock",
         notes: "Manual restock"
       });
-      // Reload products
+      
+      // Reload products with proper mapping
       const data = await getProducts();
-      setProducts(data || []);
+      setProducts((data || []).map(product => ({
+        id: product.id,
+        name: product.name || "Unknown Product",
+        sku: product.sku || "N/A",
+        category: product.category || "Uncategorized",
+        supplier: "Unknown Supplier",
+        cost: 0,
+        selling_price: product.price || 0,
+        current_stock: product.current_stock || 0,
+        min_stock: product.minimum_stock || 0,
+        max_stock: product.maximum_stock || 0,
+        unit: product.unit || "unit",
+        expiry_date: product.expiry_date,
+        description: "",
+        status: product.active ? "active" : "inactive",
+        last_restocked: null,
+        total_sold: 0,
+      })));
     } catch (err) {
       console.error("Error restocking product:", err);
       setError(err.message || "Failed to restock product.");
@@ -385,59 +580,32 @@ export function InventoryProducts({ onPageChange }) {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="category">Category</Label>
-                    <Select value={newProduct.category} onValueChange={(value) => handleInputChange("category", value)}>
-                      <SelectTrigger className="bg-input-background border-border">
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {getUniqueCategories().map((category) => (
-                          <SelectItem key={category} value={category}>
-                            {category}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      id="category"
+                      value={newProduct.category}
+                      onChange={(e) => handleInputChange("category", e.target.value)}
+                      placeholder="Enter category"
+                      className="bg-input-background border-border"
+                    />
                   </div>
                   <div>
-                    <Label htmlFor="supplier">Supplier</Label>
+                    <Label htmlFor="price">Price</Label>
                     <Input
-                      id="supplier"
-                      value={newProduct.supplier}
-                      onChange={(e) => handleInputChange("supplier", e.target.value)}
-                      placeholder="Enter supplier name"
+                      id="price"
+                      type="number"
+                      step="0.01"
+                      value={newProduct.price}
+                      onChange={(e) => handleInputChange("price", e.target.value)}
+                      placeholder="0.00"
                       className="bg-input-background border-border"
+                      required
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="cost">Cost Price</Label>
-                    <Input
-                      id="cost"
-                      type="number"
-                      value={newProduct.cost}
-                      onChange={(e) => handleInputChange("cost", e.target.value)}
-                      placeholder="0.00"
-                      className="bg-input-background border-border"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="selling_price">Selling Price</Label>
-                    <Input
-                      id="selling_price"
-                      type="number"
-                      value={newProduct.selling_price}
-                      onChange={(e) => handleInputChange("selling_price", e.target.value)}
-                      placeholder="0.00"
-                      className="bg-input-background border-border"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="current_stock">Current Stock</Label>
+                    <Label htmlFor="current_stock">Stock</Label>
                     <Input
                       id="current_stock"
                       type="number"
@@ -445,45 +613,36 @@ export function InventoryProducts({ onPageChange }) {
                       onChange={(e) => handleInputChange("current_stock", e.target.value)}
                       placeholder="0"
                       className="bg-input-background border-border"
+                      required
                     />
                   </div>
                   <div>
-                    <Label htmlFor="min_stock">Min Stock</Label>
+                    <Label htmlFor="location_id">Location ID</Label>
                     <Input
-                      id="min_stock"
+                      id="location_id"
                       type="number"
-                      value={newProduct.min_stock}
-                      onChange={(e) => handleInputChange("min_stock", e.target.value)}
-                      placeholder="0"
+                      value={newProduct.location_id}
+                      onChange={(e) => handleInputChange("location_id", e.target.value)}
+                      placeholder="1"
                       className="bg-input-background border-border"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="max_stock">Max Stock</Label>
-                    <Input
-                      id="max_stock"
-                      type="number"
-                      value={newProduct.max_stock}
-                      onChange={(e) => handleInputChange("max_stock", e.target.value)}
-                      placeholder="0"
-                      className="bg-input-background border-border"
+                      required
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <Label htmlFor="unit">Unit</Label>
+                    <Label htmlFor="lot_number">Lot Number (Optional)</Label>
                     <Input
-                      id="unit"
-                      value={newProduct.unit}
-                      onChange={(e) => handleInputChange("unit", e.target.value)}
-                      placeholder="e.g., vial, syringe, bottle"
+                      id="lot_number"
+                      value={newProduct.lot_number}
+                      onChange={(e) => handleInputChange("lot_number", e.target.value)}
+                      placeholder="Enter lot number"
                       className="bg-input-background border-border"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="expiry_date">Expiry Date</Label>
+                    <Label htmlFor="expiry_date">Expiry Date (Optional)</Label>
                     <Input
                       id="expiry_date"
                       type="date"
@@ -492,19 +651,19 @@ export function InventoryProducts({ onPageChange }) {
                       className="bg-input-background border-border"
                     />
                   </div>
+                  <div>
+                    <Label htmlFor="low_stock_threshold">Low Stock Threshold (Optional)</Label>
+                    <Input
+                      id="low_stock_threshold"
+                      type="number"
+                      value={newProduct.low_stock_threshold}
+                      onChange={(e) => handleInputChange("low_stock_threshold", e.target.value)}
+                      placeholder="Optional"
+                      className="bg-input-background border-border"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={newProduct.description}
-                    onChange={(e) => handleInputChange("description", e.target.value)}
-                    placeholder="Product description..."
-                    className="bg-input-background border-border"
-                    rows={3}
-                  />
-                </div>
 
                 <div className="flex justify-end space-x-2">
                   <Button
@@ -722,7 +881,7 @@ export function InventoryProducts({ onPageChange }) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleEditProduct(product.id)}
+                            onClick={() => handleEditProduct(product)}
                             className="border-border hover:bg-primary/5"
                           >
                             <Edit className="h-4 w-4" />
@@ -756,7 +915,7 @@ export function InventoryProducts({ onPageChange }) {
 
       {/* Product Details Dialog */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="bg-card border-border max-w-2xl">
+        <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Product Details</DialogTitle>
             <DialogDescription>
@@ -896,11 +1055,175 @@ export function InventoryProducts({ onPageChange }) {
                   Close
                 </Button>
                 <Button
-                  onClick={() => handleEditProduct(selectedProduct.id)}
+                  onClick={() => {
+                    setIsDetailsOpen(false);
+                    setTimeout(() => handleEditProduct(selectedProduct), 100);
+                  }}
                   className="bg-primary hover:bg-primary/90 text-primary-foreground"
                 >
                   <Edit className="mr-2 h-4 w-4" />
                   Edit Product
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Product Dialog */}
+      <Dialog open={isEditProductOpen} onOpenChange={setIsEditProductOpen}>
+        <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Product</DialogTitle>
+            <DialogDescription>
+              Update product information
+            </DialogDescription>
+          </DialogHeader>
+          {editingProduct && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit_name">Product Name</Label>
+                  <Input
+                    id="edit_name"
+                    value={editingProduct.name}
+                    onChange={(e) => handleEditInputChange("name", e.target.value)}
+                    placeholder="Enter product name"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit_sku">SKU</Label>
+                  <Input
+                    id="edit_sku"
+                    value={editingProduct.sku}
+                    onChange={(e) => handleEditInputChange("sku", e.target.value)}
+                    placeholder="Enter SKU"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit_category">Category</Label>
+                  <Input
+                    id="edit_category"
+                    value={editingProduct.category}
+                    onChange={(e) => handleEditInputChange("category", e.target.value)}
+                    placeholder="Enter category"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit_price">Price</Label>
+                  <Input
+                    id="edit_price"
+                    type="number"
+                    step="0.01"
+                    value={editingProduct.selling_price}
+                    onChange={(e) => handleEditInputChange("selling_price", e.target.value)}
+                    placeholder="0.00"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="edit_current_stock">Current Stock</Label>
+                  <Input
+                    id="edit_current_stock"
+                    type="number"
+                    value={editingProduct.current_stock}
+                    onChange={(e) => handleEditInputChange("current_stock", e.target.value)}
+                    placeholder="0"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit_min_stock">Minimum Stock</Label>
+                  <Input
+                    id="edit_min_stock"
+                    type="number"
+                    value={editingProduct.min_stock}
+                    onChange={(e) => handleEditInputChange("min_stock", e.target.value)}
+                    placeholder="0"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit_low_stock_threshold">Low Stock Threshold</Label>
+                  <Input
+                    id="edit_low_stock_threshold"
+                    type="number"
+                    value={editingProduct.low_stock_threshold || ""}
+                    onChange={(e) => handleEditInputChange("low_stock_threshold", e.target.value)}
+                    placeholder="0"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit_location_id">Location ID</Label>
+                  <Input
+                    id="edit_location_id"
+                    type="number"
+                    value={editingProduct.location_id || 1}
+                    onChange={(e) => handleEditInputChange("location_id", e.target.value)}
+                    placeholder="1"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit_unit">Unit</Label>
+                  <Input
+                    id="edit_unit"
+                    value={editingProduct.unit}
+                    onChange={(e) => handleEditInputChange("unit", e.target.value)}
+                    placeholder="e.g., vial, syringe, bottle"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit_expiry_date">Expiry Date (Optional)</Label>
+                  <Input
+                    id="edit_expiry_date"
+                    type="date"
+                    value={editingProduct.expiry_date}
+                    onChange={(e) => handleEditInputChange("expiry_date", e.target.value)}
+                    className="bg-input-background border-border"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditProductOpen(false);
+                    setEditingProduct(null);
+                  }}
+                  className="border-border hover:bg-primary/5"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveEdit}
+                  disabled={isProcessing}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Edit className="mr-2 h-4 w-4" />
+                  )}
+                  {isProcessing ? "Saving..." : "Save Changes"}
                 </Button>
               </div>
             </div>

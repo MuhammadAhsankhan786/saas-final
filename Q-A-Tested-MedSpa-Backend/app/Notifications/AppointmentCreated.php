@@ -36,7 +36,7 @@ class AppointmentCreated extends Notification implements ShouldQueue
             ->line('A new appointment has been booked.')
             ->line('🔹 Client: ' . $appointment->client->name)
             ->line('🔹 Location: ' . optional($appointment->location)->name)
-            ->line('🔹 Date & Time: ' . $appointment->appointment_time)
+            ->line('🔹 Date & Time: ' . ($appointment->start_time ?? 'N/A'))
             ->line('Notes: ' . ($appointment->notes ?? 'No additional notes'))
             ->action('View Appointment', url('/appointments/' . $appointment->id))
             ->line('Thank you!');
@@ -49,9 +49,10 @@ class AppointmentCreated extends Notification implements ShouldQueue
         return [
             'appointment_id' => $appointment->id,
             'client' => $appointment->client->name,
-            'staff' => $appointment->staff->name ?? null,
+            'provider' => $appointment->provider->name ?? null,
             'location' => optional($appointment->location)->name,
-            'time' => $appointment->appointment_time,
+            'start_time' => $appointment->start_time,
+            'end_time' => $appointment->end_time,
             'notes' => $appointment->notes,
         ];
     }
@@ -62,7 +63,7 @@ class AppointmentCreated extends Notification implements ShouldQueue
 
         $message = "📅 New Appointment Assigned\n"
             . "Client: " . $appointment->client->name . "\n"
-            . "Time: " . $appointment->appointment_time . "\n"
+            . "Time: " . ($appointment->start_time ?? 'N/A') . "\n"
             . "Location: " . optional($appointment->location)->name;
 
         $twilio = new Client(

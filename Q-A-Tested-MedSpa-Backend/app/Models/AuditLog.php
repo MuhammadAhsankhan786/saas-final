@@ -17,4 +17,17 @@ class AuditLog extends Model
         'old_data',
         'new_data',
     ];
+
+    protected $casts = [
+        'old_data' => 'array',
+        'new_data' => 'array',
+    ];
+
+    /**
+     * Relationship with User
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id', 'id');
+    }
 }

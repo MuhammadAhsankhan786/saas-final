@@ -19,6 +19,12 @@ export async function fetchWithAuth(url, options = {}) {
     console.log(`📡 Response status: ${res.status} ${res.statusText}`);
     console.log(`📋 Content-Type: ${res.headers.get("content-type")}`);
     
+    // Handle 204 No Content responses (like successful DELETE)
+    if (res.status === 204) {
+      console.log(`✅ Success - No Content (204) for ${url}`);
+      return null; // Success with no body
+    }
+    
     // Check if response is HTML (error page) instead of JSON
     const contentType = res.headers.get("content-type");
     if (!contentType || !contentType.includes("application/json")) {
@@ -33,61 +39,81 @@ export async function fetchWithAuth(url, options = {}) {
         return;
       }
       
+      // Don't throw error for non-JSON if status is successful
+      if (res.ok) {
+        return { success: true };
+      }
+      
       throw new Error(`Server returned HTML instead of JSON. Status: ${res.status}. URL: ${API_BASE}${url}`);
     }
     
     if (!res.ok) {
+      const status = res.status;
+      const statusText = res.statusText;
+      
+      console.error(`❌ API call failed: ${status} ${statusText} for ${url}`);
+      
+      // Handle specific error cases first
+      if (status === 401) {
+        console.log("🔐 Unauthorized - but not redirecting, letting AuthContext handle it");
+        // Don't clear token here - let AuthContext handle it
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Unauthorized");
+      }
+      
+      if (status === 422) {
+        // Validation error - parse silently and create user-friendly message
+        try {
+          const errorData = await res.json();
+          
+          // Create user-friendly error message without console logs
+          if (errorData.errors) {
+            const errorMessages = Object.values(errorData.errors).flat().join(', ');
+            const error = new Error(errorMessages);
+            error.errors = errorData.errors;
+            throw error;
+          } else if (errorData.message) {
+            throw new Error(errorData.message);
+          } else {
+            throw new Error("Validation failed. Please fill all required fields correctly.");
+          }
+        } catch (parseError) {
+          throw new Error("Validation failed. Please check your input.");
+        }
+      }
+      
+      if (status === 404) {
+        // Try to get more info about the 404
+        const responseText = await res.text().catch(() => 'No response body');
+        console.error(`❌ 404 Not Found - URL: ${API_BASE}${url}`);
+        console.error(`❌ Response body: ${responseText.substring(0, 200)}`);
+        throw new Error(`Endpoint not found: ${url}. Please check if the server is running and the route exists.`);
+      }
+      
+      if (status === 403) {
+        throw new Error("Access forbidden. You do not have permission to access this resource.");
+      }
+      
+      if (status >= 500) {
+        throw new Error(`Server error: ${statusText}. Please check the backend logs.`);
+      }
+      
       // Check if the error response is JSON
       const contentType = res.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
         try {
           const err = await res.json();
-          console.error("❌ API Error:", err);
-          console.error("❌ Response status:", res.status);
-          console.error("❌ Response statusText:", res.statusText);
-          
-          // Handle specific error cases
-          if (res.status === 401) {
-            console.log("🔐 Unauthorized - clearing token and redirecting");
-            localStorage.removeItem("token");
-            window.location.href = "/login";
-            return;
-          }
-          
-          throw new Error(err.message || err.error || `API Error: ${res.status} ${res.statusText}`);
+          console.error("❌ API Error JSON:", err);
+          throw new Error(err.message || err.error || `API Error: ${status} ${statusText}`);
         } catch (parseError) {
           console.error("❌ Failed to parse error response:", parseError);
-          console.error("❌ Response status:", res.status);
-          console.error("❌ Response statusText:", res.statusText);
-          
-          // Try to get response text for debugging
-          try {
-            const text = await res.text();
-            console.error("❌ Response text:", text.substring(0, 500));
-          } catch (textError) {
-            console.error("❌ Could not get response text:", textError);
-          }
-          
-          throw new Error(`API Error: ${res.status} ${res.statusText}`);
+          throw new Error(`API Error: ${status} ${statusText}`);
         }
       } else {
         // Non-JSON error response
-        try {
-          const text = await res.text();
-          console.error("❌ Non-JSON error response:", text.substring(0, 500));
-        } catch (textError) {
-          console.error("❌ Could not get error response text:", textError);
-        }
-        
-        // Handle specific error cases
-        if (res.status === 401) {
-          console.log("🔐 Unauthorized - clearing token and redirecting");
-          localStorage.removeItem("token");
-          window.location.href = "/login";
-          return;
-        }
-        
-        throw new Error(`API Error: ${res.status} ${res.statusText}`);
+        const text = await res.text().catch(() => 'Unable to read response');
+        console.error(`❌ Non-JSON error response: ${text.substring(0, 500)}`);
+        throw new Error(`API Error: ${status} ${statusText}`);
       }
     }
     
@@ -185,6 +211,15 @@ export async function getAppointments(filters = {}) {
   console.log('🔍 Fetching appointments from:', url);
   const result = await fetchWithAuth(url);
   console.log('📋 Appointments response:', result);
+  return result;
+}
+
+export async function getMyAppointments(filters = {}) {
+  const queryParams = new URLSearchParams(filters).toString();
+  const url = `/client/appointments${queryParams ? `?${queryParams}` : ''}`;
+  console.log('🔍 Fetching client appointments from:', url);
+  const result = await fetchWithAuth(url);
+  console.log('📋 Client appointments response:', result);
   return result;
 }
 
@@ -645,5 +680,69 @@ export async function deleteProfilePhoto() {
   return fetchWithAuth("/profile/photo", {
     method: "DELETE",
   });
+}
+
+// ✅ Compliance Alerts API Functions
+export async function getComplianceAlerts(filters = {}) {
+  const queryParams = new URLSearchParams(filters).toString();
+  const url = `/admin/compliance-alerts${queryParams ? `?${queryParams}` : ''}`;
+  return fetchWithAuth(url);
+}
+
+export async function getComplianceAlert(id) {
+  return fetchWithAuth(`/admin/compliance-alerts/${id}`);
+}
+
+export async function getComplianceStatistics() {
+  return fetchWithAuth("/admin/compliance-alerts/statistics");
+}
+
+export async function resolveComplianceAlert(id) {
+  return fetchWithAuth(`/admin/compliance-alerts/${id}/resolve`, {
+    method: "POST",
+  });
+}
+
+export async function dismissComplianceAlert(id) {
+  return fetchWithAuth(`/admin/compliance-alerts/${id}/dismiss`, {
+    method: "POST",
+  });
+}
+
+export async function exportComplianceAlertsToPDF(filters = {}) {
+  const queryParams = new URLSearchParams(filters).toString();
+  const endpointUrl = `/admin/compliance-alerts/export/pdf${queryParams ? `?${queryParams}` : ''}`;
+  
+  const token = localStorage.getItem("token");
+  
+  try {
+    const response = await fetch(`${API_BASE}${endpointUrl}`, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/pdf",
+        "Content-Type": "application/json",
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to export PDF: ${response.status}`);
+    }
+    
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `compliance-alerts-${new Date().toISOString().split('T')[0]}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(blobUrl);
+    document.body.removeChild(a);
+    
+    return { success: true };
+  } catch (error) {
+    console.error("Error exporting PDF:", error);
+    throw error;
+  }
 }
   

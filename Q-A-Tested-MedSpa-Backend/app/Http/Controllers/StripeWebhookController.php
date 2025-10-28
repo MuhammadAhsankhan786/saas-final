@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use App\Models\Payment;
+use App\Notifications\AppointmentCreated;
+use Twilio\Rest\Client as TwilioClient;
 
 class StripeWebhookController extends Controller
 {
@@ -36,6 +39,9 @@ class StripeWebhookController extends Controller
                 
                 // Update payment status in database
                 $this->updatePaymentStatus($paymentIntent->id, 'completed');
+                
+                // Send SMS notification for successful payment
+                $this->sendPaymentSms($paymentIntent->id);
                 break;
 
             case 'payment_intent.payment_failed':
@@ -55,9 +61,71 @@ class StripeWebhookController extends Controller
 
     private function updatePaymentStatus($stripePaymentIntentId, $status)
     {
-        // Find payment by Stripe payment intent ID and update status
-        // This would require adding a stripe_payment_intent_id field to payments table
-        // For now, just log the action
-        Log::info("Updating payment status to: {$status} for Stripe ID: {$stripePaymentIntentId}");
+        try {
+            // Find payment by Stripe payment intent ID and update status
+            $payment = Payment::where('stripe_payment_intent_id', $stripePaymentIntentId)->first();
+            
+            if ($payment) {
+                $payment->status = $status;
+                $payment->save();
+                
+                Log::info("✅ Payment status updated to: {$status} for Stripe ID: {$stripePaymentIntentId}");
+            } else {
+                Log::warning("⚠️ Payment not found for Stripe ID: {$stripePaymentIntentId}");
+            }
+        } catch (\Exception $e) {
+            Log::error("❌ Error updating payment status: " . $e->getMessage());
+        }
+    }
+
+    private function sendPaymentSms($stripePaymentIntentId)
+    {
+        try {
+            $payment = Payment::with(['client.clientUser', 'appointment', 'appointment.provider'])
+                ->where('stripe_payment_intent_id', $stripePaymentIntentId)
+                ->first();
+
+            if (!$payment) {
+                Log::warning("⚠️ Payment not found for SMS: {$stripePaymentIntentId}");
+                return;
+            }
+
+            // Send SMS to client about payment confirmation
+            if ($payment->client && $payment->client->clientUser && $payment->client->clientUser->phone) {
+                $twilio = new TwilioClient(
+                    config('services.twilio.sid'),
+                    config('services.twilio.token')
+                );
+
+                $clientName = $payment->client->clientUser->name ?? 'Client';
+                $message = "✅ Payment Confirmed\n"
+                    . "Amount: $" . number_format($payment->amount, 2) . "\n"
+                    . "Transaction ID: " . substr($payment->stripe_payment_intent_id, 0, 8) . "...\n"
+                    . "Thank you for your payment!";
+
+                $twilio->messages->create($payment->client->clientUser->phone, [
+                    'from' => config('services.twilio.from'),
+                    'body' => $message,
+                ]);
+
+                Log::info("📱 Payment confirmation SMS sent to: {$clientName}");
+            }
+
+            // If payment was linked to an appointment with a provider, send notification
+            if ($payment->appointment && $payment->appointment->provider_id) {
+                $appointment = $payment->appointment;
+                $appointment->load(['client.clientUser', 'provider', 'location', 'service', 'package']);
+                
+                try {
+                    $appointment->provider->notify(new AppointmentCreated($appointment));
+                    Log::info("📨 Appointment SMS sent to provider: {$appointment->provider->name}");
+                } catch (\Exception $e) {
+                    Log::error("Failed to send appointment notification: " . $e->getMessage());
+                }
+            }
+
+        } catch (\Exception $e) {
+            Log::error("❌ Error sending payment SMS: " . $e->getMessage());
+        }
     }
 }

@@ -44,6 +44,21 @@ function AppContent() {
   const [currentPage, setCurrentPage] = useState("dashboard");
   const router = useRouter();
 
+  // ✅ Restore current page from localStorage on initial mount only
+  useEffect(() => {
+    const savedPage = localStorage.getItem("currentPage");
+    if (savedPage) {
+      setCurrentPage(savedPage);
+    }
+  }, []);
+
+  // ✅ Save current page to localStorage when it changes
+  useEffect(() => {
+    if (isAuthenticated && currentPage) {
+      localStorage.setItem("currentPage", currentPage);
+    }
+  }, [currentPage, isAuthenticated]);
+
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       router.replace("/login");

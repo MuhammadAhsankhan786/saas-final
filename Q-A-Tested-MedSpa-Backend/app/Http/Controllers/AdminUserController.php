@@ -27,19 +27,22 @@ class AdminUserController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8',
-            'role' => 'required|string|in:admin,provider,reception,client,medical_director',
-            'location_id' => 'nullable|exists:locations,id',
+            'password' => 'nullable|string|min:8',
+            'role' => 'required|string|in:admin,provider,reception,client',
+            'location_id' => 'required|exists:locations,id',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+        // Auto-generate password if not provided
+        $password = $request->password ?? \Illuminate\Support\Str::random(10);
+
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'password' => Hash::make($password),
             'role' => $request->role,
             'location_id' => $request->location_id,
         ]);
@@ -57,9 +60,9 @@ class AdminUserController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|string|email|max:255|unique:users,email,' . $id,
-            'password' => 'sometimes|string|min:8',
-            'role' => 'sometimes|string|in:admin,provider,reception,client,medical_director',
-            'location_id' => 'nullable|exists:locations,id',
+            'password' => 'sometimes|nullable|string|min:8',
+            'role' => 'sometimes|string|in:admin,provider,reception,client',
+            'location_id' => 'sometimes|nullable|exists:locations,id',
         ]);
 
         if ($validator->fails()) {
@@ -68,7 +71,7 @@ class AdminUserController extends Controller
 
         $updateData = $request->only(['name', 'email', 'role', 'location_id']);
         
-        if ($request->has('password')) {
+        if ($request->has('password') && !empty($request->password)) {
             $updateData['password'] = Hash::make($request->password);
         }
 

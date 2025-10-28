@@ -128,9 +128,28 @@ export function PaymentHistory({ onPageChange }) {
     return matchesSearch && matchesStatus && matchesMethod;
   });
 
-  const totalAmount = filteredPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  // Calculate statistics with proper null handling
+  const totalAmount = filteredPayments.reduce((sum, payment) => {
+    const amount = parseFloat(payment?.amount) || 0;
+    return sum + amount;
+  }, 0);
+  
   const completedPayments = filteredPayments.filter(p => p && p.status === "completed").length;
   const pendingPayments = filteredPayments.filter(p => p && p.status === "pending").length;
+  
+  // Calculate average per transaction with proper formatting
+  const averagePerTransaction = filteredPayments.length > 0 
+    ? (totalAmount / filteredPayments.length) 
+    : 0;
+  
+  // Format currency values
+  const formatCurrency = (value) => {
+    const numValue = parseFloat(value) || 0;
+    return numValue.toLocaleString('en-US', { 
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 2 
+    });
+  };
 
   const handleViewDetails = (payment) => {
     setSelectedPayment(payment);
@@ -214,10 +233,10 @@ export function PaymentHistory({ onPageChange }) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">
-              ${totalAmount.toLocaleString()}
+            <div className="text-2xl font-bold text-foreground overflow-hidden">
+              ${formatCurrency(totalAmount)}
             </div>
-            <p className="text-xs text-muted-foreground">From {filteredPayments.length} transactions</p>
+            <p className="text-xs text-muted-foreground truncate">From {filteredPayments.length} transactions</p>
           </CardContent>
         </Card>
 
@@ -246,10 +265,10 @@ export function PaymentHistory({ onPageChange }) {
             <CardTitle className="text-base text-foreground">Average</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">
-              ${filteredPayments.length > 0 ? (totalAmount / filteredPayments.length).toFixed(0) : 0}
+            <div className="text-2xl font-bold text-foreground overflow-hidden">
+              ${formatCurrency(averagePerTransaction)}
             </div>
-            <p className="text-xs text-muted-foreground">Per transaction</p>
+            <p className="text-xs text-muted-foreground truncate">Per transaction</p>
           </CardContent>
         </Card>
       </div>

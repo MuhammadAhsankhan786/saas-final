@@ -37,41 +37,45 @@ import {
   X,
   Check,
 } from "lucide-react";
-import { getUsers, createUser, updateUser, deleteUser } from "@/lib/api";
+import { getUsers, createUser, updateUser, deleteUser, getLocations } from "@/lib/api";
 
 export function StaffManagement({ onPageChange }) {
   const [staff, setStaff] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const [isAddingStaff, setIsAddingStaff] = useState(false);
   const [editingStaff, setEditingStaff] = useState(null);
 
-  // Fetch staff data from backend on component mount
+  // Fetch staff data and locations from backend on component mount
   useEffect(() => {
-    async function fetchStaff() {
+    async function fetchData() {
       try {
         setLoading(true);
         setError("");
-        const users = await getUsers();
+        const [users, locationsData] = await Promise.all([
+          getUsers(),
+          getLocations()
+        ]);
         // Filter users to show only staff members (provider, reception roles)
         const staffMembers = users.filter(user => 
           user.role === 'provider' || user.role === 'reception' || user.role === 'admin'
         );
         setStaff(staffMembers);
+        setLocations(locationsData || []);
       } catch (error) {
-        console.error("Error fetching staff:", error);
-        setError("Failed to load staff data: " + error.message);
+        console.error("Error fetching data:", error);
+        setError("Failed to load data: " + error.message);
       } finally {
         setLoading(false);
       }
     }
-    fetchStaff();
+    fetchData();
   }, []);
   const [newStaff, setNewStaff] = useState({
     name: "",
     email: "",
-    password: "",
     role: "",
     location_id: "",
   });
@@ -91,18 +95,17 @@ export function StaffManagement({ onPageChange }) {
   };
 
   const handleAddStaff = async () => {
-    if (newStaff.name && newStaff.email && newStaff.password && newStaff.role) {
+    if (newStaff.name && newStaff.email && newStaff.role && newStaff.location_id) {
       try {
         setLoading(true);
         setError("");
         
-        // Create user via API
+        // Create user via API (password is optional, backend will auto-generate)
         const createdUser = await createUser({
           name: newStaff.name,
           email: newStaff.email,
-          password: newStaff.password,
           role: newStaff.role,
-          location_id: newStaff.location_id || null,
+          location_id: newStaff.location_id,
         });
         
         // Refresh staff list from backend
@@ -116,7 +119,6 @@ export function StaffManagement({ onPageChange }) {
         setNewStaff({
           name: "",
           email: "",
-          password: "",
           role: "",
           location_id: "",
         });
@@ -127,6 +129,8 @@ export function StaffManagement({ onPageChange }) {
       } finally {
         setLoading(false);
       }
+    } else {
+      setError("Please fill in all required fields (Name, Email, Role, and Location)");
     }
   };
 
@@ -316,6 +320,7 @@ export function StaffManagement({ onPageChange }) {
                   id="name"
                   value={newStaff.name}
                   onChange={(e) => handleInputChange("name", e.target.value)}
+                  placeholder="Enter full name"
                   className="bg-input-background border-border"
                 />
               </div>
@@ -326,22 +331,13 @@ export function StaffManagement({ onPageChange }) {
                   type="email"
                   value={newStaff.email}
                   onChange={(e) => handleInputChange("email", e.target.value)}
+                  placeholder="Enter email address"
                   className="bg-input-background border-border"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={newStaff.password}
-                  onChange={(e) => handleInputChange("password", e.target.value)}
-                  className="bg-input-background border-border"
-                />
-              </div>
               <div>
                 <Label htmlFor="role">Role</Label>
                 <Select 
@@ -355,6 +351,24 @@ export function StaffManagement({ onPageChange }) {
                     {roles.map((role) => (
                       <SelectItem key={role} value={role}>
                         {role.charAt(0).toUpperCase() + role.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="location">Location</Label>
+                <Select 
+                  value={newStaff.location_id} 
+                  onValueChange={(value) => handleInputChange("location_id", value)}
+                >
+                  <SelectTrigger className="bg-input-background border-border">
+                    <SelectValue placeholder="Select location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations.map((location) => (
+                      <SelectItem key={location.id} value={String(location.id)}>
+                        {location.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -435,6 +449,24 @@ export function StaffManagement({ onPageChange }) {
                     {roles.map((role) => (
                       <SelectItem key={role} value={role}>
                         {role.charAt(0).toUpperCase() + role.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="editLocation">Location</Label>
+                <Select 
+                  value={editingStaff.location_id ? String(editingStaff.location_id) : ""} 
+                  onValueChange={(value) => handleEditInputChange("location_id", value)}
+                >
+                  <SelectTrigger className="bg-input-background border-border">
+                    <SelectValue placeholder="Select location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations.map((location) => (
+                      <SelectItem key={location.id} value={String(location.id)}>
+                        {location.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

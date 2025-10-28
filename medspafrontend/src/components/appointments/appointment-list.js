@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { 
   getAppointments, 
+  getMyAppointments,
   getAppointment, 
   updateAppointment, 
   updateAppointmentStatus, 
@@ -81,14 +82,17 @@ export function AppointmentList({ onPageChange }) {
     async function fetchAppointments() {
       try {
         setLoading(true);
-        const data = await getAppointments();
+        // Use client appointments endpoint for client role
+        const data = await getMyAppointments();
         console.log("📋 Appointments fetched:", data);
         // Format appointments for display
-        const formattedAppointments = data.map(formatAppointmentForDisplay);
+        const formattedAppointments = Array.isArray(data) 
+          ? data.map(formatAppointmentForDisplay)
+          : [];
         setAppointments(formattedAppointments);
       } catch (error) {
         console.error("❌ Error fetching appointments:", error);
-        alert("Failed to fetch appointments: " + error.message);
+        // Don't show alert on every error, just log it
       } finally {
         setLoading(false);
       }

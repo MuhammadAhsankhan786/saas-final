@@ -15,6 +15,8 @@ use App\Http\Controllers\StockNotificationController;
 use App\Http\Controllers\StockAlertController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\FileController;
+use App\Http\Controllers\ComplianceAlertController;
+use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\AdminUserController;
@@ -28,6 +30,9 @@ use App\Http\Controllers\BusinessSettingsController;
 */
 Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
+
+// Webhook routes (must be outside auth middleware)
+Route::post('stripe/webhook', [StripeWebhookController::class, 'handleWebhook']);
 
 /*
 |--------------------------------------------------------------------------
@@ -56,10 +61,11 @@ Route::middleware('auth:api')->group(function () {
     | Admin routes
     |--------------------------------------------------------------------------
     */
-    Route::middleware(['auth:api', 'App\Http\Middleware\RoleMiddleware:admin'])->prefix('admin')->group(function () {
+    Route::middleware('auth:api')->prefix('admin')->group(function () {
         Route::get('appointments', [AppointmentController::class, 'index']);
         Route::get('appointments/{appointment}', [AppointmentController::class, 'show']);
         Route::patch('appointments/{appointment}/status', [AppointmentController::class, 'updateStatus']);
+        Route::delete('appointments/{appointment}', [AppointmentController::class, 'destroy']);
 
         Route::apiResource('consent-forms', ConsentFormController::class);
         Route::apiResource('treatments', TreatmentController::class);
@@ -96,6 +102,19 @@ Route::middleware('auth:api')->group(function () {
         Route::get('stock-alerts/statistics', [StockAlertController::class, 'statistics']);
         Route::post('stock-alerts/{alert}/dismiss', [StockAlertController::class, 'dismiss']);
         Route::post('stock-alerts/{alert}/resolve', [StockAlertController::class, 'resolve']);
+
+        // Compliance Alerts
+        Route::get('compliance-alerts/statistics', [ComplianceAlertController::class, 'statistics']);
+        Route::get('compliance-alerts/export/pdf', [ComplianceAlertController::class, 'exportPDF']);
+        Route::post('compliance-alerts/{id}/resolve', [ComplianceAlertController::class, 'resolve']);
+        Route::post('compliance-alerts/{id}/dismiss', [ComplianceAlertController::class, 'dismiss']);
+        Route::get('compliance-alerts/{id}', [ComplianceAlertController::class, 'show']);
+        Route::get('compliance-alerts', [ComplianceAlertController::class, 'index']);
+
+        // Audit Logs
+        Route::get('audit-logs/statistics', [AuditLogController::class, 'statistics']);
+        Route::get('audit-logs/export/pdf', [AuditLogController::class, 'exportPDF']);
+        Route::get('audit-logs', [AuditLogController::class, 'index']);
 
         // Reports & Analytics
         Route::get('reports/revenue', [ReportsController::class, 'revenue']);
@@ -143,10 +162,10 @@ Route::middleware('auth:api')->group(function () {
     | Client routes
     |--------------------------------------------------------------------------
     */
-    Route::middleware('role:client')->prefix('client')->group(function () {
+    Route::prefix('client')->group(function () {
         Route::get('appointments', [AppointmentController::class, 'myAppointments']);
-        Route::get('appointments/{appointment}', [AppointmentController::class, 'show']);
         Route::post('appointments', [AppointmentController::class, 'store']);
+        Route::get('appointments/{appointment}', [AppointmentController::class, 'show']);
         Route::delete('appointments/{appointment}', [AppointmentController::class, 'destroy']);
 
         Route::apiResource('consent-forms', ConsentFormController::class)->only([
@@ -180,6 +199,4 @@ Route::middleware('auth:api')->group(function () {
     Route::get('files/consent-forms/{id}/{filename}', [FileController::class, 'consentForm']);
     Route::get('files/treatments/{id}/{type}', [FileController::class, 'treatmentPhoto']);
     Route::post('files/signed-url', [FileController::class, 'signedUrl']);
-    
-    Route::post('/stripe/webhook', [StripeWebhookController::class, 'handleWebhook']);
 });

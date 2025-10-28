@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -40,167 +40,125 @@ import {
   CheckCircle,
   Clock,
 } from "lucide-react";
+import { fetchWithAuth } from "../../lib/api";
 
-// Mock audit log data
-const auditLogs = [
-  {
-    id: "1",
-    timestamp: "2025-12-21T10:30:00Z",
-    user: "Dr. Chen",
-    userId: "user-1",
-    action: "login",
-    resource: "System",
-    details: "User logged in successfully",
-    ipAddress: "192.168.1.100",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    status: "success",
-    severity: "info",
-  },
-  {
-    id: "2",
-    timestamp: "2025-12-21T10:35:00Z",
-    user: "Dr. Chen",
-    userId: "user-1",
-    action: "create",
-    resource: "Appointment",
-    details: "Created new appointment for Emma Johnson",
-    ipAddress: "192.168.1.100",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    status: "success",
-    severity: "info",
-  },
-  {
-    id: "3",
-    timestamp: "2025-12-21T11:15:00Z",
-    user: "Sarah Wilson",
-    userId: "user-4",
-    action: "update",
-    resource: "Client",
-    details: "Updated client information for Sarah Davis",
-    ipAddress: "192.168.1.101",
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    status: "success",
-    severity: "info",
-  },
-  {
-    id: "4",
-    timestamp: "2025-12-21T11:20:00Z",
-    user: "Dr. Johnson",
-    userId: "user-2",
-    action: "delete",
-    resource: "Appointment",
-    details: "Cancelled appointment for Lisa Brown",
-    ipAddress: "192.168.1.102",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    status: "success",
-    severity: "warning",
-  },
-  {
-    id: "5",
-    timestamp: "2025-12-21T12:00:00Z",
-    user: "Unknown",
-    userId: "unknown",
-    action: "login",
-    resource: "System",
-    details: "Failed login attempt with invalid credentials",
-    ipAddress: "203.0.113.1",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    status: "failed",
-    severity: "error",
-  },
-  {
-    id: "6",
-    timestamp: "2025-12-21T13:30:00Z",
-    user: "Dr. Smith",
-    userId: "user-3",
-    action: "create",
-    resource: "SOAP Note",
-    details: "Created SOAP note for Jessica Martinez",
-    ipAddress: "192.168.1.103",
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    status: "success",
-    severity: "info",
-  },
-];
-
-const actionTypes = ["All", "login", "logout", "create", "update", "delete", "view"];
-const severityLevels = ["All", "info", "warning", "error", "critical"];
-const statusOptions = ["All", "success", "failed", "pending"];
+const actionTypes = ["All", "create", "update", "delete", "login", "logout"];
+const tableTypes = ["All"];
 
 export function AuditLog({ onPageChange }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [actionFilter, setActionFilter] = useState("All");
-  const [severityFilter, setSeverityFilter] = useState("All");
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [dateRange, setDateRange] = useState("All");
+  const [tableFilter, setTableFilter] = useState("All");
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ total: 0, today: 0, this_week: 0, this_month: 0 });
+
+  // Fetch audit logs from API
+  useEffect(() => {
+    fetchAuditLogs();
+    fetchStatistics();
+  }, []);
+
+  const fetchAuditLogs = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (actionFilter !== "All") params.append("action", actionFilter);
+      if (tableFilter !== "All") params.append("table_name", tableFilter);
+      if (searchQuery) params.append("search", searchQuery);
+
+      const response = await fetchWithAuth(`/admin/audit-logs?${params}`);
+      setAuditLogs(response.data || []);
+    } catch (error) {
+      console.error("Failed to fetch audit logs:", error);
+      setAuditLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStatistics = async () => {
+    try {
+      const response = await fetchWithAuth("/admin/audit-logs/statistics");
+      setStats(response);
+    } catch (error) {
+      console.error("Failed to fetch statistics:", error);
+    }
+  };
+
+  // Refetch when filters change
+  useEffect(() => {
+    fetchAuditLogs();
+  }, [actionFilter, tableFilter, searchQuery]);
 
   const filteredLogs = auditLogs.filter((log) => {
-    const matchesSearch = 
-      log.user.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.resource.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.details.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.ipAddress.includes(searchQuery);
+    const matchesSearch = searchQuery === "" || 
+      (log.user && log.user.name && log.user.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (log.action && log.action.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (log.table_name && log.table_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (log.record_id && log.record_id.toString().includes(searchQuery));
 
-    const matchesAction = actionFilter === "All" || log.action === actionFilter;
-    const matchesSeverity = severityFilter === "All" || log.severity === severityFilter;
-    const matchesStatus = statusFilter === "All" || log.status === statusFilter;
-
-    return matchesSearch && matchesAction && matchesSeverity && matchesStatus;
+    return matchesSearch;
   });
 
-  const getSeverityIcon = (severity) => {
-    switch (severity) {
-      case "info":
-        return <CheckCircle className="h-4 w-4 text-blue-500" />;
-      case "warning":
-        return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-      case "error":
-        return <AlertTriangle className="h-4 w-4 text-red-500" />;
-      case "critical":
-        return <AlertTriangle className="h-4 w-4 text-red-600" />;
-      default:
-        return <Activity className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  const getSeverityBadgeVariant = (severity) => {
-    switch (severity) {
-      case "info":
+  const getActionBadgeVariant = (action) => {
+    switch (action?.toLowerCase()) {
+      case "create":
         return "outline";
-      case "warning":
+      case "update":
         return "secondary";
-      case "error":
+      case "delete":
         return "destructive";
-      case "critical":
-        return "destructive";
-      default:
+      case "login":
         return "outline";
-    }
-  };
-
-  const getStatusBadgeVariant = (status) => {
-    switch (status) {
-      case "success":
-        return "outline";
-      case "failed":
-        return "destructive";
-      case "pending":
+      case "logout":
         return "secondary";
       default:
         return "outline";
     }
   };
 
-  const handleExportLogs = () => {
-    console.log("Exporting audit logs...");
-    alert("Audit logs exported successfully!");
-  };
+  const handleExportLogs = async () => {
+    try {
+      console.log("Exporting audit logs...");
+      
+      const params = new URLSearchParams();
+      if (actionFilter !== "All") params.append("action", actionFilter);
+      if (tableFilter !== "All") params.append("table_name", tableFilter);
+      if (searchQuery) params.append("search", searchQuery);
 
-  const totalLogs = auditLogs.length;
-  const errorLogs = auditLogs.filter(log => log && (log.severity === "error" || log.severity === "critical")).length;
-  const warningLogs = auditLogs.filter(log => log && log.severity === "warning").length;
-  const failedLogs = auditLogs.filter(log => log && log.status === "failed").length;
+      const token = localStorage.getItem("token");
+      const url = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/admin/audit-logs/export/pdf?${params}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.statusText}`);
+      }
+
+      // Get the blob
+      const blob = await response.blob();
+      
+      // Create a download link
+      const urlBlob = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = urlBlob;
+      link.download = `audit-logs-${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(urlBlob);
+      
+      console.log("✅ Audit logs exported successfully!");
+    } catch (error) {
+      console.error("❌ Failed to export audit logs:", error);
+      alert("Failed to export audit logs. Please try again.");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -239,7 +197,7 @@ export function AuditLog({ onPageChange }) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">{totalLogs}</div>
+            <div className="text-2xl font-bold text-foreground">{stats.total || 0}</div>
             <p className="text-xs text-muted-foreground">System events logged</p>
           </CardContent>
         </Card>
@@ -247,26 +205,26 @@ export function AuditLog({ onPageChange }) {
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-base text-foreground flex items-center">
-              <AlertTriangle className="mr-2 h-4 w-4 text-red-500" />
-              Errors & Critical
+              <Clock className="mr-2 h-4 w-4 text-blue-500" />
+              Today
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{errorLogs}</div>
-            <p className="text-xs text-muted-foreground">Need attention</p>
+            <div className="text-2xl font-bold text-blue-600">{stats.today || 0}</div>
+            <p className="text-xs text-muted-foreground">Today's events</p>
           </CardContent>
         </Card>
 
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-base text-foreground flex items-center">
-              <AlertTriangle className="mr-2 h-4 w-4 text-yellow-500" />
-              Warnings
+              <Calendar className="mr-2 h-4 w-4 text-green-500" />
+              This Week
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{warningLogs}</div>
-            <p className="text-xs text-muted-foreground">Monitor closely</p>
+            <div className="text-2xl font-bold text-green-600">{stats.this_week || 0}</div>
+            <p className="text-xs text-muted-foreground">Weekly activity</p>
           </CardContent>
         </Card>
 
@@ -274,12 +232,12 @@ export function AuditLog({ onPageChange }) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base text-foreground flex items-center">
               <Shield className="mr-2 h-4 w-4" />
-              Failed Actions
+              This Month
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{failedLogs}</div>
-            <p className="text-xs text-muted-foreground">Security concerns</p>
+            <div className="text-2xl font-bold text-purple-600">{stats.this_month || 0}</div>
+            <p className="text-xs text-muted-foreground">Monthly activity</p>
           </CardContent>
         </Card>
       </div>
@@ -293,14 +251,14 @@ export function AuditLog({ onPageChange }) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="lg:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
               <Label htmlFor="search">Search Logs</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="search"
-                  placeholder="Search by user, action, or details..."
+                  placeholder="Search by user, action, or table..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10 bg-input-background border-border"
@@ -325,31 +283,15 @@ export function AuditLog({ onPageChange }) {
             </div>
 
             <div>
-              <Label htmlFor="severity">Severity</Label>
-              <Select value={severityFilter} onValueChange={setSeverityFilter}>
+              <Label htmlFor="table">Table</Label>
+              <Select value={tableFilter} onValueChange={setTableFilter}>
                 <SelectTrigger className="bg-input-background border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {severityLevels.map((severity) => (
-                    <SelectItem key={severity} value={severity}>
-                      {severity === "All" ? "All Levels" : severity.charAt(0).toUpperCase() + severity.slice(1)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="status">Status</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="bg-input-background border-border">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {status === "All" ? "All Statuses" : status.charAt(0).toUpperCase() + status.slice(1)}
+                  {tableTypes.map((table) => (
+                    <SelectItem key={table} value={table}>
+                      {table === "All" ? "All Tables" : table}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -374,99 +316,80 @@ export function AuditLog({ onPageChange }) {
                   <TableHead>Timestamp</TableHead>
                   <TableHead>User</TableHead>
                   <TableHead>Action</TableHead>
-                  <TableHead>Resource</TableHead>
+                  <TableHead>Table</TableHead>
+                  <TableHead>Record ID</TableHead>
                   <TableHead>Details</TableHead>
-                  <TableHead>Severity</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>IP Address</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredLogs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <div className="text-sm text-foreground">
-                            {new Date(log.timestamp).toLocaleDateString()}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {new Date(log.timestamp).toLocaleTimeString()}
-                          </div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <div className="font-medium text-foreground">{log.user}</div>
-                          <div className="text-sm text-muted-foreground">ID: {log.userId}</div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {log.action}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-foreground">{log.resource}</TableCell>
-                    <TableCell className="text-foreground max-w-xs truncate">
-                      {log.details}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        {getSeverityIcon(log.severity)}
-                        <Badge variant={getSeverityBadgeVariant(log.severity)}>
-                          {log.severity.charAt(0).toUpperCase() + log.severity.slice(1)}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusBadgeVariant(log.status)}>
-                        {log.status.charAt(0).toUpperCase() + log.status.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-foreground font-mono text-sm">
-                      {log.ipAddress}
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center">
+                      Loading audit logs...
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : filteredLogs.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center">
+                      No audit logs found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredLogs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <div className="text-sm text-foreground">
+                              {new Date(log.created_at).toLocaleDateString()}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {new Date(log.created_at).toLocaleTimeString()}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <User className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            {log.user ? (
+                              <>
+                                <div className="font-medium text-foreground">{log.user.name}</div>
+                                <div className="text-xs text-muted-foreground">{log.user.email}</div>
+                              </>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Unknown</span>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={getActionBadgeVariant(log.action)} className="capitalize">
+                          {log.action}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-foreground">{log.table_name || "-"}</TableCell>
+                      <TableCell className="text-foreground font-bold">{log.record_id || "-"}</TableCell>
+                      <TableCell className="text-foreground max-w-xs truncate">
+                        {log.new_data ? (
+                          typeof log.new_data === "string" ? log.new_data : JSON.stringify(log.new_data)
+                        ) : log.old_data ? (
+                          typeof log.old_data === "string" ? log.old_data : JSON.stringify(log.old_data)
+                        ) : (
+                          "No details"
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
         </CardContent>
       </Card>
 
-      {/* Security Insights */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-foreground">Security Insights</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h4 className="font-semibold text-foreground mb-3">Recent Security Events</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>• Failed login attempt from IP 203.0.113.1 at 12:00 PM</li>
-                <li>• Multiple successful logins from Dr. Chen's account</li>
-                <li>• Appointment cancellation by Dr. Johnson logged</li>
-                <li>• SOAP note creation by Dr. Smith recorded</li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold text-foreground mb-3">Recommendations</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>• Monitor failed login attempts closely</li>
-                <li>• Consider implementing IP whitelisting</li>
-                <li>• Review user permissions regularly</li>
-                <li>• Set up automated security alerts</li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

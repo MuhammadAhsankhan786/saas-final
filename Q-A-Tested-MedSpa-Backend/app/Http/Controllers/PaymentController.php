@@ -86,6 +86,7 @@ class PaymentController extends Controller
                     'package_id'     => $request->package_id,
                     'amount'         => $request->amount,
                     'payment_method' => 'stripe',
+                    'stripe_payment_intent_id' => $paymentIntent->id,
                     'status'         => 'pending',
                     'tips'           => $request->tips ?? 0,
                     'commission'     => $commission,

@@ -23,8 +23,4 @@ class RoleMiddleware
         return $next($request);
     }
 
-    public function terminate($request, $response)
-    {
-        // No termination logic needed
-    }
 }

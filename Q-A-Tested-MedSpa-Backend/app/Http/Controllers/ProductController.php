@@ -34,23 +34,55 @@ class ProductController extends Controller
     // Add new product
     public function store(Request $request)
     {
-        $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'sku' => 'required|string|unique:products',
-            'category' => 'nullable|string|max:255',
-            'price' => 'required|numeric',
-            'current_stock' => 'required|integer|min:0',
-            'minimum_stock' => 'required|integer|min:0',
-            'low_stock_threshold' => 'required|integer|min:0',
-            'unit' => 'nullable|string|max:50',
-            'expiry_date' => 'nullable|date|after:today',
-            'lot_number' => 'nullable|string|max:255',
-            'location_id' => 'required|exists:locations,id',
-            'active' => 'boolean',
-        ]);
+        try {
+            $data = $request->validate([
+                // Required fields
+                'name' => 'required|string|max:255',
+                'sku' => 'required|string|unique:products',
+                'category' => 'required|string|max:255',
+                'price' => 'required|numeric|min:0',
+                'current_stock' => 'required|integer|min:0',
+                'location_id' => 'required|exists:locations,id',
+                
+                // Optional fields
+                'lot_number' => 'nullable|string|max:255',
+                'expiry_date' => 'nullable|date',
+                'low_stock_threshold' => 'nullable|integer|min:0',
+            ], [
+                // Required field messages
+                'name.required' => 'Product name is required.',
+                'sku.required' => 'SKU is required.',
+                'sku.unique' => 'This SKU already exists. Please use a different SKU.',
+                'category.required' => 'Category is required.',
+                'price.required' => 'Price is required.',
+                'price.numeric' => 'Price must be a valid number.',
+                'price.min' => 'Price cannot be negative.',
+                'current_stock.required' => 'Stock is required.',
+                'current_stock.integer' => 'Stock must be a whole number.',
+                'current_stock.min' => 'Stock cannot be negative.',
+                'location_id.required' => 'Location is required.',
+                'location_id.exists' => 'Selected location does not exist.',
+                
+                // Optional field messages
+                'expiry_date.date' => 'Expiry date must be a valid date.',
+                'low_stock_threshold.integer' => 'Low stock threshold must be a whole number.',
+                'low_stock_threshold.min' => 'Low stock threshold cannot be negative.',
+            ]);
 
-        $product = Product::create($data);
-        return response()->json($product, 201);
+            $product = Product::create($data);
+            return response()->json(['success' => true, 'data' => $product], 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed. Please check your input.',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create product: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     // Show single product

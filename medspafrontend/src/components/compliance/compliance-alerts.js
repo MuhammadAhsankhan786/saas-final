@@ -1,6 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { 
+  getComplianceAlerts, 
+  getComplianceStatistics,
+  resolveComplianceAlert,
+  dismissComplianceAlert,
+  exportComplianceAlertsToPDF 
+} from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -50,81 +57,15 @@ import {
   Bell,
 } from "lucide-react";
 
-// Mock compliance alerts data
-const complianceAlerts = [
-  {
-    id: "1",
-    title: "Consent Form Expiring Soon",
-    description: "5 consent forms will expire within the next 7 days",
-    type: "consent",
-    priority: "high",
-    status: "active",
-    affectedItems: 5,
-    dueDate: "2025-12-28",
-    createdAt: "2025-12-21T10:30:00Z",
-    assignedTo: "Dr. Chen",
-    category: "Documentation",
-  },
-  {
-    id: "2",
-    title: "HIPAA Compliance Review Required",
-    description: "Quarterly HIPAA compliance review is due",
-    type: "compliance",
-    priority: "critical",
-    status: "active",
-    affectedItems: 1,
-    dueDate: "2025-12-31",
-    createdAt: "2025-12-20T14:20:00Z",
-    assignedTo: "Admin",
-    category: "Security",
-  },
-  {
-    id: "3",
-    title: "Staff Training Certification Expired",
-    description: "2 staff members have expired training certifications",
-    type: "training",
-    priority: "medium",
-    status: "active",
-    affectedItems: 2,
-    dueDate: "2025-12-25",
-    createdAt: "2025-12-19T09:15:00Z",
-    assignedTo: "HR Manager",
-    category: "Training",
-  },
-  {
-    id: "4",
-    title: "Equipment Maintenance Overdue",
-    description: "Laser equipment maintenance is overdue",
-    type: "equipment",
-    priority: "high",
-    status: "resolved",
-    affectedItems: 1,
-    dueDate: "2025-12-15",
-    createdAt: "2025-12-18T16:45:00Z",
-    assignedTo: "Dr. Smith",
-    category: "Equipment",
-  },
-  {
-    id: "5",
-    title: "Data Backup Verification Failed",
-    description: "Weekly data backup verification failed",
-    type: "backup",
-    priority: "critical",
-    status: "active",
-    affectedItems: 1,
-    dueDate: "2025-12-22",
-    createdAt: "2025-12-21T08:00:00Z",
-    assignedTo: "IT Admin",
-    category: "Data Security",
-  },
-];
-
 const alertTypes = ["All", "consent", "compliance", "training", "equipment", "backup"];
 const priorities = ["All", "critical", "high", "medium", "low"];
 const statusOptions = ["All", "active", "resolved", "dismissed"];
 const categories = ["All", "Documentation", "Security", "Training", "Equipment", "Data Security"];
 
 export function ComplianceAlerts({ onPageChange }) {
+  const [complianceAlerts, setComplianceAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");
@@ -132,21 +73,52 @@ export function ComplianceAlerts({ onPageChange }) {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-
-  const filteredAlerts = complianceAlerts.filter((alert) => {
-    const matchesSearch = 
-      alert.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      alert.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      alert.assignedTo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      alert.category.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesType = typeFilter === "All" || alert.type === typeFilter;
-    const matchesPriority = priorityFilter === "All" || alert.priority === priorityFilter;
-    const matchesStatus = statusFilter === "All" || alert.status === statusFilter;
-    const matchesCategory = categoryFilter === "All" || alert.category === categoryFilter;
-
-    return matchesSearch && matchesType && matchesPriority && matchesStatus && matchesCategory;
+  const [statistics, setStatistics] = useState({
+    total_alerts: 0,
+    active_alerts: 0,
+    critical_alerts: 0,
+    overdue_alerts: 0,
   });
+
+  // Fetch compliance alerts and statistics
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        setError("");
+        
+        const filters = {};
+        
+        if (searchQuery) filters.search = searchQuery;
+        if (typeFilter !== "All") filters.type = typeFilter;
+        if (priorityFilter !== "All") filters.priority = priorityFilter;
+        if (statusFilter !== "All") filters.status = statusFilter;
+        if (categoryFilter !== "All") filters.category = categoryFilter;
+        
+        const [alerts, stats] = await Promise.all([
+          getComplianceAlerts(filters),
+          getComplianceStatistics()
+        ]);
+        
+        setComplianceAlerts(alerts);
+        setStatistics(stats);
+      } catch (error) {
+        console.error("Error fetching compliance alerts:", error);
+        setError("Failed to load compliance alerts: " + error.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [searchQuery, typeFilter, priorityFilter, statusFilter, categoryFilter]);
+
+  // Statistics
+  const totalAlerts = statistics.total_alerts || complianceAlerts.length;
+  const activeAlerts = statistics.active_alerts || complianceAlerts.filter(alert => alert.status === "active").length;
+  const criticalAlerts = statistics.critical_alerts || complianceAlerts.filter(alert => alert.priority === "critical").length;
+  const overdueAlerts = statistics.overdue_alerts || complianceAlerts.filter(alert => 
+    new Date(alert.due_date) < new Date() && alert.status === "active"
+  ).length;
 
   const getPriorityIcon = (priority) => {
     switch (priority) {
@@ -209,31 +181,57 @@ export function ComplianceAlerts({ onPageChange }) {
     setIsDetailsOpen(true);
   };
 
-  const handleResolveAlert = (alertId) => {
+  const handleResolveAlert = async (alertId) => {
     if (confirm("Are you sure you want to mark this alert as resolved?")) {
-      console.log(`Resolving alert ${alertId}`);
-      alert("Alert marked as resolved successfully!");
+      try {
+        await resolveComplianceAlert(alertId);
+        // Refresh data
+        const alerts = await getComplianceAlerts();
+        const stats = await getComplianceStatistics();
+        setComplianceAlerts(alerts);
+        setStatistics(stats);
+        setIsDetailsOpen(false);
+      } catch (error) {
+        console.error("Error resolving alert:", error);
+        alert("Failed to resolve alert: " + error.message);
+      }
     }
   };
 
-  const handleDismissAlert = (alertId) => {
+  const handleDismissAlert = async (alertId) => {
     if (confirm("Are you sure you want to dismiss this alert?")) {
-      console.log(`Dismissing alert ${alertId}`);
-      alert("Alert dismissed successfully!");
+      try {
+        await dismissComplianceAlert(alertId);
+        // Refresh data
+        const alerts = await getComplianceAlerts();
+        const stats = await getComplianceStatistics();
+        setComplianceAlerts(alerts);
+        setStatistics(stats);
+        setIsDetailsOpen(false);
+      } catch (error) {
+        console.error("Error dismissing alert:", error);
+        alert("Failed to dismiss alert: " + error.message);
+      }
     }
   };
 
-  const handleExportAlerts = () => {
-    console.log("Exporting compliance alerts...");
-    alert("Compliance alerts exported successfully!");
+  const handleExportAlerts = async () => {
+    try {
+      setLoading(true);
+      const filters = {
+        status: statusFilter !== "All" ? statusFilter : undefined,
+        priority: priorityFilter !== "All" ? priorityFilter : undefined,
+      };
+      
+      await exportComplianceAlertsToPDF(filters);
+      alert("Compliance alerts exported successfully!");
+    } catch (error) {
+      console.error("Error exporting alerts:", error);
+      alert("Failed to export alerts: " + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
-
-  const totalAlerts = complianceAlerts.length;
-  const activeAlerts = complianceAlerts.filter(alert => alert.status === "active").length;
-  const criticalAlerts = complianceAlerts.filter(alert => alert.priority === "critical").length;
-  const overdueAlerts = complianceAlerts.filter(alert => 
-    new Date(alert.dueDate) < new Date() && alert.status === "active"
-  ).length;
 
   return (
     <div className="space-y-6">
@@ -250,16 +248,35 @@ export function ComplianceAlerts({ onPageChange }) {
           </Button>
           <div>
             <h1 className="text-2xl font-bold text-foreground">Compliance Alerts</h1>
-            <p className="text-muted-foreground">Monitor compliance requirements and regulatory alerts</p>
+              <p className="text-muted-foreground">Monitor compliance requirements and regulatory alerts</p>
           </div>
         </div>
+      </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
+
+      {/* Loading State */}
+      {loading && !complianceAlerts.length && (
+        <div className="text-center py-8">
+          <div className="text-muted-foreground">Loading compliance alerts...</div>
+        </div>
+      )}
+
+      {/* Export Button */}
+      <div className="flex justify-end">
         <Button
-          onClick={handleExportAlerts}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground"
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Export Alerts
-        </Button>
+            onClick={handleExportAlerts}
+            disabled={loading}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export Alerts
+          </Button>
       </div>
 
       {/* Summary Cards */}
@@ -396,7 +413,7 @@ export function ComplianceAlerts({ onPageChange }) {
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-foreground">
-            Compliance Alerts ({filteredAlerts.length})
+            Compliance Alerts ({complianceAlerts.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -414,7 +431,7 @@ export function ComplianceAlerts({ onPageChange }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredAlerts.map((alert) => (
+                {complianceAlerts.map((alert) => (
                   <TableRow key={alert.id}>
                     <TableCell>
                       <div>
@@ -423,7 +440,7 @@ export function ComplianceAlerts({ onPageChange }) {
                           {alert.description}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          {alert.category} • {alert.affectedItems} items
+                          {alert.category} • {alert.affected_items} items
                         </div>
                       </div>
                     </TableCell>
@@ -452,18 +469,18 @@ export function ComplianceAlerts({ onPageChange }) {
                       <div className="flex items-center space-x-2">
                         <Calendar className="h-4 w-4 text-muted-foreground" />
                         <span className={`text-sm ${
-                          new Date(alert.dueDate) < new Date() && alert.status === "active"
+                          new Date(alert.due_date) < new Date() && alert.status === "active"
                             ? "text-red-600 font-medium"
                             : "text-foreground"
                         }`}>
-                          {new Date(alert.dueDate).toLocaleDateString()}
+                          {alert.due_date ? new Date(alert.due_date).toLocaleDateString() : 'N/A'}
                         </span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2">
                         <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-foreground">{alert.assignedTo}</span>
+                        <span className="text-foreground">{alert.assigned_to}</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -508,15 +525,15 @@ export function ComplianceAlerts({ onPageChange }) {
 
       {/* Alert Details Dialog */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="bg-card border-border max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="bg-card border-border max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Alert Details</DialogTitle>
             <DialogDescription>
               Complete information about this compliance alert
             </DialogDescription>
           </DialogHeader>
           {selectedAlert && (
-            <div className="space-y-6">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2 custom-scrollbar">
               {/* Alert Information */}
               <div>
                 <h3 className="font-semibold text-foreground mb-3 flex items-center">
@@ -525,21 +542,21 @@ export function ComplianceAlerts({ onPageChange }) {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
                   <div>
-                    <div className="text-sm text-muted-foreground">Title</div>
-                    <div className="font-medium text-foreground">{selectedAlert.title}</div>
+                    <div className="text-sm text-muted-foreground mb-1">Title</div>
+                    <div className="font-medium text-foreground break-words">{selectedAlert.title}</div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Category</div>
-                    <div className="font-medium text-foreground">{selectedAlert.category}</div>
+                    <div className="text-sm text-muted-foreground mb-1">Category</div>
+                    <div className="font-medium text-foreground break-words">{selectedAlert.category}</div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Type</div>
+                    <div className="text-sm text-muted-foreground mb-1">Type</div>
                     <Badge variant="outline" className="capitalize">
                       {selectedAlert.type}
                     </Badge>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Priority</div>
+                    <div className="text-sm text-muted-foreground mb-1">Priority</div>
                     <div className="flex items-center space-x-2">
                       {getPriorityIcon(selectedAlert.priority)}
                       <Badge variant={getPriorityBadgeVariant(selectedAlert.priority)}>
@@ -548,7 +565,7 @@ export function ComplianceAlerts({ onPageChange }) {
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Status</div>
+                    <div className="text-sm text-muted-foreground mb-1">Status</div>
                     <div className="flex items-center space-x-2">
                       {getStatusIcon(selectedAlert.status)}
                       <Badge variant={getStatusBadgeVariant(selectedAlert.status)}>
@@ -557,8 +574,8 @@ export function ComplianceAlerts({ onPageChange }) {
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Affected Items</div>
-                    <div className="font-medium text-foreground">{selectedAlert.affectedItems}</div>
+                    <div className="text-sm text-muted-foreground mb-1">Affected Items</div>
+                    <div className="font-medium text-foreground">{selectedAlert.affected_items}</div>
                   </div>
                 </div>
               </div>
@@ -566,36 +583,36 @@ export function ComplianceAlerts({ onPageChange }) {
               {/* Description */}
               <div>
                 <h3 className="font-semibold text-foreground mb-3">Description</h3>
-                <div className="p-4 bg-muted rounded-lg">
-                  <p className="text-foreground">{selectedAlert.description}</p>
+                <div className="p-4 bg-muted rounded-lg max-h-32 overflow-y-auto">
+                  <p className="text-foreground break-words">{selectedAlert.description}</p>
                 </div>
               </div>
 
               {/* Due Date and Assignment */}
               <div>
                 <h3 className="font-semibold text-foreground mb-3">Assignment & Timeline</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
                   <div>
-                    <div className="text-sm text-muted-foreground">Due Date</div>
+                    <div className="text-sm text-muted-foreground mb-1">Due Date</div>
                     <div className="font-medium text-foreground">
-                      {new Date(selectedAlert.dueDate).toLocaleDateString()}
+                      {selectedAlert.due_date ? new Date(selectedAlert.due_date).toLocaleDateString() : 'N/A'}
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Assigned To</div>
-                    <div className="font-medium text-foreground">{selectedAlert.assignedTo}</div>
+                    <div className="text-sm text-muted-foreground mb-1">Assigned To</div>
+                    <div className="font-medium text-foreground break-words">{selectedAlert.assigned_to || 'Unassigned'}</div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Created</div>
+                    <div className="text-sm text-muted-foreground mb-1">Created</div>
                     <div className="font-medium text-foreground">
-                      {new Date(selectedAlert.createdAt).toLocaleDateString()}
+                      {selectedAlert.created_at ? new Date(selectedAlert.created_at).toLocaleDateString() : 'N/A'}
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Actions */}
-              <div className="flex justify-end space-x-2">
+              <div className="flex justify-end space-x-2 flex-shrink-0 pt-4 border-t border-border">
                 <Button
                   variant="outline"
                   onClick={() => setIsDetailsOpen(false)}

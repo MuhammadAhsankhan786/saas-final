@@ -9,8 +9,8 @@ class Product extends Model
     use HasFactory;
 
     protected $fillable = [
-        'name', 'sku', 'price', 'current_stock', 'minimum_stock', 'unit', 'active',
-        'category', 'expiry_date', 'lot_number', 'low_stock_threshold', 'location_id'
+        'name', 'sku', 'price', 'current_stock', 'location_id',
+        'category', 'lot_number', 'expiry_date', 'low_stock_threshold'
     ];
 
     public function stockAdjustments()
