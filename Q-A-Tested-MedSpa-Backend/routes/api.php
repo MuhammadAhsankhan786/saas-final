@@ -200,6 +200,10 @@ Route::middleware('auth:api')->group(function () {
 
         // Packages
         Route::get('packages', [PackageController::class, 'myPackages']);
+        
+        // Services (view all available)
+        Route::get('services', [ServiceController::class, 'index']);
+        Route::get('services/{service}', [ServiceController::class, 'show']);
     });
 
     /*

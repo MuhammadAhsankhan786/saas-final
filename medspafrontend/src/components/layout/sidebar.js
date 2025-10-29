@@ -49,7 +49,7 @@ const navigationItems = [
         id: "appointments/list",
         label: "All Appointments",
         icon: Calendar,
-        roles: ["admin", "provider", "reception"],
+        roles: ["admin", "provider", "reception", "client"],
       },
     ],
   },
@@ -340,32 +340,64 @@ export function Sidebar({ currentPage, onPageChange }) {
 
   // Client role UI isolation: show only self-service modules
   if (user.role === "client") {
-    const allowedTopLevel = new Set([
-      "dashboard",
-      "appointments",
-      "payments",
-      "settings",
-    ]);
-
-    const allowedChildrenByParent = {
-      // Appointments: Book and view own list (no calendar)
-      "appointments": new Set(["appointments/book", "appointments/list"]),
-      // Payments: View own payment history
-      "payments": new Set(["payments/history", "payments/packages"]),
-      // Settings: Profile only
-      "settings": new Set(["settings/profile"]),
-    };
-
+    // For clients, exclude the parent "appointments" item and create direct links
     filteredNavItems = navigationItems
-      .filter((item) => allowedTopLevel.has(item.id))
+      .filter((item) => {
+        // Show dashboard, payments, settings
+        if (["dashboard", "payments", "settings"].includes(item.id)) {
+          return true;
+        }
+        // Hide the parent "appointments" item for clients
+        if (item.id === "appointments") {
+          return false;
+        }
+        // Hide other items
+        return false;
+      })
       .map((item) => {
-        const allowedChildren = allowedChildrenByParent[item.id];
-        const children = Array.isArray(item.children) ? item.children : [];
-        const prunedChildren = allowedChildren
-          ? children.filter((child) => allowedChildren.has(child.id))
-          : [];
-        return { ...item, children: prunedChildren };
+        // Handle children for payments and settings
+        if (item.id === "payments") {
+          return {
+            ...item,
+            children: item.children?.filter(child => 
+              child.roles.includes(user.role)
+            ) || []
+          };
+        }
+        if (item.id === "settings") {
+          return {
+            ...item,
+            children: item.children?.filter(child => 
+              child.roles.includes(user.role)
+            ) || []
+          };
+        }
+        return item;
       });
+    
+    // Add direct appointment links for clients (not as children of a parent)
+    const appointmentChildren = navigationItems
+      .find(item => item.id === "appointments")
+      ?.children || [];
+    
+    const clientAppointmentLinks = appointmentChildren
+      .filter(child => child.roles.includes(user.role))
+      .map(child => ({
+        ...child,
+        id: child.id,
+        label: child.label,
+        icon: child.icon,
+        roles: child.roles,
+        isDirectLink: true // Mark as direct link, not a child
+      }));
+    
+    // Insert appointment links after dashboard, before payments
+    const dashboardIndex = filteredNavItems.findIndex(item => item.id === "dashboard");
+    filteredNavItems = [
+      ...filteredNavItems.slice(0, dashboardIndex + 1),
+      ...clientAppointmentLinks,
+      ...filteredNavItems.slice(dashboardIndex + 1)
+    ];
   }
 
   return (
@@ -418,7 +450,25 @@ export function Sidebar({ currentPage, onPageChange }) {
                 }`}
                 data-nav-item={item.label}
                 onClick={() => {
-                  onPageChange(item.id);
+                  // For direct links (like client appointments), navigate directly
+                  if (item.isDirectLink) {
+                    onPageChange(item.id);
+                    console.log("✅ Sidebar navigation - direct link clicked:", item.id);
+                    return;
+                  }
+                  
+                  // For menu items with children (like Payments, Settings), navigate to first allowed child
+                  if (item.children && item.children.length > 0) {
+                    const firstAllowedChild = item.children.find(child => child.roles.includes(user.role));
+                    if (firstAllowedChild) {
+                      onPageChange(firstAllowedChild.id);
+                      console.log("✅ Sidebar navigation - clicked parent, navigating to child:", firstAllowedChild.id);
+                    } else {
+                      onPageChange(item.id);
+                    }
+                  } else {
+                    onPageChange(item.id);
+                  }
                   console.log("✅ Sidebar navigation working — route changed successfully!");
                 }}
               >
@@ -426,7 +476,7 @@ export function Sidebar({ currentPage, onPageChange }) {
                 {item.label}
               </Button>
 
-              {item.children && (
+              {item.children && item.children.length > 0 && !item.isDirectLink && (
                 <div className="ml-4 mt-1 space-y-1">
                   {item.children
                     .filter((child) => child.roles.includes(user.role))

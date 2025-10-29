@@ -34,8 +34,13 @@ import {
   Camera,
 } from "lucide-react";
 import { getUserProfile, updateUserProfile, uploadProfilePhoto } from "@/lib/api";
+import { notify } from "@/lib/toast";
+import { useAuth } from "@/context/AuthContext";
 
 export function ProfileSettings({ onPageChange }) {
+  const { user } = useAuth();
+  const isClient = user?.role === "client";
+  
   const [profileData, setProfileData] = useState({
     first_name: "",
     last_name: "",
@@ -81,17 +86,27 @@ export function ProfileSettings({ onPageChange }) {
       try {
         setIsLoading(true);
         setError("");
+        
+        // Debug: Check authentication
+        const token = localStorage.getItem("token");
+        console.log("🔍 Profile fetch - Debug info:");
+        console.log("🔑 Token present:", !!token);
+        if (token) {
+          console.log("🔑 Token (first 30 chars):", token.substring(0, 30) + "...");
+        }
+        console.log("👤 Current user:", user);
+        
         const profile = await getUserProfile();
         setProfileData(profile);
       } catch (error) {
-        console.error("Error fetching profile:", error);
+        console.error("❌ Error fetching profile:", error);
         setError("Failed to load profile: " + error.message);
       } finally {
         setIsLoading(false);
       }
     }
     fetchProfile();
-  }, []);
+  }, [user]);
 
   const handleInputChange = (field, value) => {
     setProfileData(prev => ({ ...prev, [field]: value }));
@@ -113,12 +128,12 @@ export function ProfileSettings({ onPageChange }) {
     try {
       console.log("Saving profile:", profileData);
       await updateUserProfile(profileData);
-      alert("Profile updated successfully!");
+      notify.success("Profile updated successfully!");
       setIsEditing(false);
     } catch (error) {
       console.error("Error saving profile:", error);
       setError("Error saving profile: " + error.message);
-      alert("Error saving profile. Please try again.");
+      notify.error("Error saving profile. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -135,17 +150,20 @@ export function ProfileSettings({ onPageChange }) {
 
     setIsUploadingPhoto(true);
     setError("");
+    const toastId = notify.loading("Uploading profile photo...");
     try {
       const result = await uploadProfilePhoto(file);
       setProfileData(prev => ({ 
         ...prev, 
         profile_image: result.profile_image_url 
       }));
-      alert("Profile photo uploaded successfully!");
+      notify.dismiss(toastId);
+      notify.success("Profile photo uploaded successfully!");
     } catch (error) {
       console.error("Error uploading photo:", error);
       setError("Error uploading photo: " + error.message);
-      alert("Error uploading photo. Please try again.");
+      notify.dismiss(toastId);
+      notify.error("Error uploading photo. Please try again.");
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -154,6 +172,32 @@ export function ProfileSettings({ onPageChange }) {
   const handlePhotoClick = () => {
     if (isEditing) {
       fileInputRef.current?.click();
+    }
+  };
+
+  // Real-time toggle handler for notification and privacy settings
+  const handleToggleChange = async (parent, field, checked) => {
+    const oldValue = profileData[parent]?.[field];
+    
+    // Optimistically update UI
+    handleNestedInputChange(parent, field, checked);
+    
+    try {
+      // Save immediately to backend
+      const updatedData = {
+        ...profileData,
+        [parent]: {
+          ...profileData[parent],
+          [field]: checked
+        }
+      };
+      await updateUserProfile(updatedData);
+      notify.success("Settings updated successfully");
+    } catch (error) {
+      console.error("Error updating settings:", error);
+      // Revert on error
+      handleNestedInputChange(parent, field, oldValue);
+      notify.error("Failed to update settings. Please try again.");
     }
   };
 
@@ -353,46 +397,48 @@ export function ProfileSettings({ onPageChange }) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="title">Job Title</Label>
-                <Select 
-                  value={profileData.title || ""} 
-                  onValueChange={(value) => handleInputChange("title", value)}
-                  disabled={!isEditing}
-                >
-                  <SelectTrigger className="bg-input-background border-border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {titles.map((title) => (
-                      <SelectItem key={title} value={title}>
-                        {title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {!isClient && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="title">Job Title</Label>
+                  <Select 
+                    value={profileData.title || ""} 
+                    onValueChange={(value) => handleInputChange("title", value)}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger className="bg-input-background border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {titles.map((title) => (
+                        <SelectItem key={title} value={title}>
+                          {title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="department">Department</Label>
+                  <Select 
+                    value={profileData.department || ""} 
+                    onValueChange={(value) => handleInputChange("department", value)}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger className="bg-input-background border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departments.map((dept) => (
+                        <SelectItem key={dept} value={dept}>
+                          {dept}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div>
-                <Label htmlFor="department">Department</Label>
-                <Select 
-                  value={profileData.department || ""} 
-                  onValueChange={(value) => handleInputChange("department", value)}
-                  disabled={!isEditing}
-                >
-                  <SelectTrigger className="bg-input-background border-border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departments.map((dept) => (
-                      <SelectItem key={dept} value={dept}>
-                        {dept}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            )}
 
             <div>
               <Label htmlFor="bio">Bio</Label>
@@ -518,8 +564,7 @@ export function ProfileSettings({ onPageChange }) {
                   <Switch
                     id="email-notifications"
                     checked={profileData.notification_preferences?.email || false}
-                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "email", checked)}
-                    disabled={!isEditing}
+                    onCheckedChange={(checked) => handleToggleChange("notification_preferences", "email", checked)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -527,8 +572,7 @@ export function ProfileSettings({ onPageChange }) {
                   <Switch
                     id="sms-notifications"
                     checked={profileData.notification_preferences?.sms || false}
-                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "sms", checked)}
-                    disabled={!isEditing}
+                    onCheckedChange={(checked) => handleToggleChange("notification_preferences", "sms", checked)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -536,8 +580,7 @@ export function ProfileSettings({ onPageChange }) {
                   <Switch
                     id="push-notifications"
                     checked={profileData.notification_preferences?.push || false}
-                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "push", checked)}
-                    disabled={!isEditing}
+                    onCheckedChange={(checked) => handleToggleChange("notification_preferences", "push", checked)}
                   />
                 </div>
               </div>
@@ -551,8 +594,7 @@ export function ProfileSettings({ onPageChange }) {
                   <Switch
                     id="appointment-reminders"
                     checked={profileData.notification_preferences?.appointmentReminders || false}
-                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "appointmentReminders", checked)}
-                    disabled={!isEditing}
+                    onCheckedChange={(checked) => handleToggleChange("notification_preferences", "appointmentReminders", checked)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -560,8 +602,7 @@ export function ProfileSettings({ onPageChange }) {
                   <Switch
                     id="system-updates"
                     checked={profileData.notification_preferences?.systemUpdates || false}
-                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "systemUpdates", checked)}
-                    disabled={!isEditing}
+                    onCheckedChange={(checked) => handleToggleChange("notification_preferences", "systemUpdates", checked)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -569,8 +610,7 @@ export function ProfileSettings({ onPageChange }) {
                   <Switch
                     id="marketing"
                     checked={profileData.notification_preferences?.marketing || false}
-                    onCheckedChange={(checked) => handleNestedInputChange("notification_preferences", "marketing", checked)}
-                    disabled={!isEditing}
+                    onCheckedChange={(checked) => handleToggleChange("notification_preferences", "marketing", checked)}
                   />
                 </div>
               </div>
@@ -613,8 +653,7 @@ export function ProfileSettings({ onPageChange }) {
                 <Switch
                   id="show-email"
                   checked={profileData.privacy_settings?.showEmail || false}
-                  onCheckedChange={(checked) => handleNestedInputChange("privacy_settings", "showEmail", checked)}
-                  disabled={!isEditing}
+                  onCheckedChange={(checked) => handleToggleChange("privacy_settings", "showEmail", checked)}
                 />
               </div>
               <div className="flex items-center justify-between">
@@ -622,8 +661,7 @@ export function ProfileSettings({ onPageChange }) {
                 <Switch
                   id="show-phone"
                   checked={profileData.privacy_settings?.showPhone || false}
-                  onCheckedChange={(checked) => handleNestedInputChange("privacy_settings", "showPhone", checked)}
-                  disabled={!isEditing}
+                  onCheckedChange={(checked) => handleToggleChange("privacy_settings", "showPhone", checked)}
                 />
               </div>
               <div className="flex items-center justify-between">
@@ -631,8 +669,7 @@ export function ProfileSettings({ onPageChange }) {
                 <Switch
                   id="allow-messages"
                   checked={profileData.privacy_settings?.allowDirectMessages || false}
-                  onCheckedChange={(checked) => handleNestedInputChange("privacy_settings", "allowDirectMessages", checked)}
-                  disabled={!isEditing}
+                  onCheckedChange={(checked) => handleToggleChange("privacy_settings", "allowDirectMessages", checked)}
                 />
               </div>
             </div>

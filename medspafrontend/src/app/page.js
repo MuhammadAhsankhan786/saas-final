@@ -60,10 +60,14 @@ function AppContent() {
   // ✅ Restore current page from localStorage on initial mount only
   useEffect(() => {
     const savedPage = localStorage.getItem("currentPage");
-    if (savedPage) {
+    // For client role, always start on dashboard
+    if (user?.role === "client" && savedPage && savedPage !== "dashboard") {
+      localStorage.setItem("currentPage", "dashboard");
+      setCurrentPage("dashboard");
+    } else if (savedPage) {
       setCurrentPage(savedPage);
     }
-  }, []);
+  }, [user?.role]);
 
   // ✅ Save current page to localStorage when it changes
   useEffect(() => {

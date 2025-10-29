@@ -4,13 +4,14 @@ import React, { useState, useEffect } from "react";
 import { 
   getAppointments, 
   getMyAppointments,
-  getAppointment, 
+  getAppointment,
   updateAppointment, 
   updateAppointmentStatus, 
   deleteAppointment,
   formatAppointmentForDisplay,
   formatDateTime,
-  isValidStatus
+  isValidStatus,
+  fetchWithAuth,
 } from "@/lib/api";
 import { AppointmentRow } from "./AppointmentRow";
 import AppointmentForm from "./AppointmentForm";
@@ -181,9 +182,16 @@ export function AppointmentList({ onPageChange }) {
     }
   };
 
-  const handleEditAppointment = (appointment) => {
-    setEditingAppointment(appointment);
-    setIsEditOpen(true);
+  const handleEditAppointment = async (appointment) => {
+    try {
+      // Fetch full appointment details to ensure all fields are available
+      const fullAppointment = await getAppointment(appointment.id);
+      setEditingAppointment(fullAppointment);
+      setIsEditOpen(true);
+    } catch (error) {
+      console.error("Error fetching appointment details:", error);
+      notify.error("Failed to load appointment details");
+    }
   };
 
   const handleRefreshAppointments = async () => {
@@ -211,8 +219,11 @@ export function AppointmentList({ onPageChange }) {
     });
 
     if (confirmed) {
+      const toastId = notify.loading("Deleting appointment...");
       try {
         await deleteAppointment(appointmentId);
+        notify.dismiss(toastId);
+        notify.success("Appointment deleted successfully");
         // Refresh appointments list using role-based endpoint
         const data = isAdmin 
           ? await getAppointments() 
@@ -221,9 +232,9 @@ export function AppointmentList({ onPageChange }) {
           ? data.map(formatAppointmentForDisplay)
           : [];
         setAppointments(formattedAppointments);
-        notify.success("Appointment deleted successfully");
       } catch (error) {
         console.error("Error deleting appointment:", error);
+        notify.dismiss(toastId);
         notify.error("Failed to delete appointment: " + error.message);
       }
     }
@@ -507,7 +518,7 @@ export function AppointmentList({ onPageChange }) {
 
       {/* Edit Appointment Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="bg-card border-border max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border max-w-2xl sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Appointment</DialogTitle>
             <DialogDescription>
@@ -518,7 +529,14 @@ export function AppointmentList({ onPageChange }) {
             <AppointmentForm
               editingAppointment={editingAppointment}
               onPageChange={onPageChange}
-              onClose={() => setIsEditOpen(false)}
+              onClose={() => {
+                setIsEditOpen(false);
+                setEditingAppointment(null);
+              }}
+              onSuccess={async () => {
+                // Refresh appointments list after successful update
+                await handleRefreshAppointments();
+              }}
             />
           )}
         </DialogContent>

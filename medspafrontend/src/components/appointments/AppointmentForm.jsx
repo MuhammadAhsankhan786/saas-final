@@ -27,27 +27,31 @@ import {
   fetchWithAuth,
   getAppointmentFormData,
 } from "@/lib/api";
+import { notify } from "@/lib/toast";
 
-export default function AppointmentForm({ appointment = null, onSuccess, onPageChange }) {
+export default function AppointmentForm({ appointment = null, editingAppointment = null, onSuccess, onPageChange, onClose }) {
   // Get user role
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isClient = user.role === "client";
   
+  // Use editingAppointment if provided, otherwise use appointment
+  const appointmentToEdit = editingAppointment || appointment;
+  
   const [formData, setFormData] = useState({
-    client_id: appointment?.client_id || "",
-    provider_id: appointment?.provider_id || "none",
-    location_id: appointment?.location_id || "",
-    service_id: appointment?.service_id || "none",
-    package_id: appointment?.package_id || "none",
-    date: appointment ? appointment.start_time.split("T")[0] : "",
-    start_time: appointment
-      ? new Date(appointment.start_time).toISOString().slice(11, 16)
+    client_id: appointmentToEdit?.client_id || "",
+    provider_id: appointmentToEdit?.provider_id || "none",
+    location_id: appointmentToEdit?.location_id || "",
+    service_id: appointmentToEdit?.service_id || "none",
+    package_id: appointmentToEdit?.package_id || "none",
+    date: appointmentToEdit ? appointmentToEdit.start_time.split("T")[0] : "",
+    start_time: appointmentToEdit
+      ? new Date(appointmentToEdit.start_time).toISOString().slice(11, 16)
       : "",
-    end_time: appointment
-      ? new Date(appointment.end_time).toISOString().slice(11, 16)
+    end_time: appointmentToEdit
+      ? new Date(appointmentToEdit.end_time).toISOString().slice(11, 16)
       : "",
-    status: appointment?.status || "booked",
-    notes: appointment?.notes || "",
+    status: appointmentToEdit?.status || "booked",
+    notes: appointmentToEdit?.notes || "",
   });
 
   const [loading, setLoading] = useState(false);
@@ -116,7 +120,32 @@ export default function AppointmentForm({ appointment = null, onSuccess, onPageC
       }
     }
     loadData();
-  }, [isClient]);
+  }, [isClient, appointmentToEdit]);
+  
+  // Update form data when appointmentToEdit changes
+  useEffect(() => {
+    if (appointmentToEdit) {
+      console.log("📝 Updating form with appointment data:", appointmentToEdit);
+      const newFormData = {
+        client_id: appointmentToEdit?.client_id || "",
+        provider_id: appointmentToEdit?.provider_id ? String(appointmentToEdit.provider_id) : "none",
+        location_id: appointmentToEdit?.location_id ? String(appointmentToEdit.location_id) : "",
+        service_id: appointmentToEdit?.service_id ? String(appointmentToEdit.service_id) : "none",
+        package_id: appointmentToEdit?.package_id ? String(appointmentToEdit.package_id) : "none",
+        date: appointmentToEdit.start_time?.split("T")[0] || "",
+        start_time: appointmentToEdit.start_time
+          ? new Date(appointmentToEdit.start_time).toISOString().slice(11, 16)
+          : "",
+        end_time: appointmentToEdit.end_time
+          ? new Date(appointmentToEdit.end_time).toISOString().slice(11, 16)
+          : "",
+        status: appointmentToEdit?.status || "booked",
+        notes: appointmentToEdit?.notes || "",
+      };
+      console.log("📝 New form data:", newFormData);
+      setFormData(newFormData);
+    }
+  }, [appointmentToEdit]);
 
   // handle input change
   const handleChange = (key, value) => {
@@ -153,15 +182,20 @@ export default function AppointmentForm({ appointment = null, onSuccess, onPageC
 
     try {
       setLoading(true);
-      if (appointment) {
-        await updateAppointment(appointment.id, payload);
+      if (appointmentToEdit) {
+        await updateAppointment(appointmentToEdit.id, payload);
+        notify.success("Appointment updated successfully");
       } else {
         await createAppointment(payload);
+        notify.success("Appointment created successfully");
       }
       if (onSuccess) onSuccess();
+      if (onClose) onClose(); // Close modal if editing in modal
     } catch (err) {
       console.error(err);
-      setError("Something went wrong while saving appointment.");
+      const errorMessage = err.message || "Something went wrong while saving appointment.";
+      setError(errorMessage);
+      notify.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -173,7 +207,10 @@ export default function AppointmentForm({ appointment = null, onSuccess, onPageC
       <div className="flex items-center space-x-4">
         <Button
           variant="outline"
-          onClick={() => onPageChange("dashboard")}
+          onClick={() => {
+            console.log("🔙 Back to Dashboard clicked, changing page to 'dashboard'");
+            onPageChange("dashboard");
+          }}
           className="border-border hover:bg-primary/5"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -181,10 +218,10 @@ export default function AppointmentForm({ appointment = null, onSuccess, onPageC
         </Button>
         <div>
           <h1 className="text-2xl font-bold text-foreground">
-            {appointment ? "Edit Appointment" : "Create Appointment"}
+            {appointmentToEdit ? "Edit Appointment" : "Create Appointment"}
           </h1>
           <p className="text-muted-foreground">
-            {appointment ? "Update appointment details" : "Schedule a new appointment"}
+            {appointmentToEdit ? "Update appointment details" : "Schedule a new appointment"}
           </p>
         </div>
       </div>
@@ -192,7 +229,7 @@ export default function AppointmentForm({ appointment = null, onSuccess, onPageC
       <Card className="w-full max-w-3xl mx-auto">
         <CardHeader>
           <CardTitle>
-            {appointment ? "Edit Appointment" : "Create Appointment"}
+            {appointmentToEdit ? "Edit Appointment" : "Create Appointment"}
           </CardTitle>
         </CardHeader>
       <CardContent>
@@ -379,7 +416,7 @@ export default function AppointmentForm({ appointment = null, onSuccess, onPageC
           <Button type="submit" disabled={loading} className="w-full">
             {loading
               ? "Saving..."
-              : appointment
+              : appointmentToEdit
               ? "Update Appointment"
               : "Create Appointment"}
           </Button>

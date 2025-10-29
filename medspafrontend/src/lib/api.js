@@ -3,16 +3,26 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 // Generic fetch wrapper
 export async function fetchWithAuth(url, options = {}) {
   const token = localStorage.getItem("token"); // JWT store kar rahe ho localStorage me
+  
+  // Build headers - don't force Content-Type for GET/HEAD requests or when body is FormData
+  const isFormData = options.body instanceof FormData;
+  const isGetRequest = !options.method || options.method.toUpperCase() === 'GET';
+  const forceContentType = !isFormData && !isGetRequest;
+  
   const headers = {
-    "Content-Type": "application/json",
     "Accept": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(forceContentType ? { "Content-Type": "application/json" } : {}),
     ...options.headers,
   };
 
   try {
     console.log(`🔗 Making API call to: ${API_BASE}${url}`);
     console.log(`🔑 Token present: ${!!token}`);
+    if (token) {
+      console.log(`🔑 Token (first 20 chars): ${token.substring(0, 20)}...`);
+    }
+    console.log(`👤 User role:`, JSON.parse(localStorage.getItem('user') || '{}').role);
     
     // Client-side guard: prevent admin from performing ANY mutations (READ-ONLY ACCESS)
     try {
@@ -35,6 +45,11 @@ export async function fetchWithAuth(url, options = {}) {
     
     console.log(`📡 Response status: ${res.status} ${res.statusText}`);
     console.log(`📋 Content-Type: ${res.headers.get("content-type")}`);
+    
+    // Log Authorization header being sent (for debugging)
+    if (headers.Authorization) {
+      console.log(`🔐 Authorization header sent: Bearer ${headers.Authorization.substring(7, 27)}...`);
+    }
     
     // Handle 204 No Content responses (like successful DELETE)
     if (res.status === 204) {
@@ -72,10 +87,20 @@ export async function fetchWithAuth(url, options = {}) {
       
       // Handle specific error cases first
       if (status === 401) {
-        console.log("🔐 Unauthorized - but not redirecting, letting AuthContext handle it");
-        // Don't clear token here - let AuthContext handle it
+        console.log("🔐 Unauthorized - Token expired or invalid");
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "Unauthorized");
+        console.log("🔐 Error response data:", errorData);
+        console.log("🔐 Response headers:", Object.fromEntries(res.headers.entries()));
+        
+        // Only auto-logout if we're not already on the login page
+        // This prevents redirect loops and allows the user to see the error
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/') {
+          console.log("🔐 Token cleared, will redirect to login on next navigation");
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+        }
+        
+        throw new Error(errorData.message || errorData.error || "Unauthorized. Please check your credentials.");
       }
       
       if (status === 422) {
@@ -192,13 +217,44 @@ export async function deleteUser(id) {
 
 // ✅ Clients API Functions
 export async function getClients(filters = {}) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const queryParams = new URLSearchParams(filters).toString();
-  const url = `/admin/clients${queryParams ? `?${queryParams}` : ''}`;
+  
+  // Clients don't need to access clients list
+  // Only staff and admin can view clients
+  if (user.role === 'client') {
+    console.log('⚠️ Clients cannot access clients list');
+    return [];
+  }
+  
+  let url;
+  if (user.role === 'admin') {
+    url = `/admin/clients${queryParams ? `?${queryParams}` : ''}`;
+  } else {
+    url = `/staff/clients${queryParams ? `?${queryParams}` : ''}`;
+  }
+  
+  console.log(`👥 Fetching clients as ${user.role} from: ${url}`);
   return fetchWithAuth(url);
 }
 
 export async function getClient(id) {
-  return fetchWithAuth(`/admin/clients/${id}`);
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Clients don't need to access individual clients
+  if (user.role === 'client') {
+    console.log('⚠️ Clients cannot access individual client data');
+    return null;
+  }
+  
+  let endpoint;
+  if (user.role === 'admin') {
+    endpoint = `/admin/clients/${id}`;
+  } else {
+    endpoint = `/staff/clients/${id}`;
+  }
+  
+  return fetchWithAuth(endpoint);
 }
 
 export async function createClient(clientData) {
@@ -248,8 +304,15 @@ export async function getAppointmentFormData() {
 }
 
 export async function getAppointment(id) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   console.log('🔍 Fetching appointment detail:', id);
-  return fetchWithAuth(`/admin/appointments/${id}`);
+  
+  // Use client endpoint for client role, admin endpoint for others
+  const endpoint = user.role === 'client' 
+    ? `/client/appointments/${id}`
+    : `/admin/appointments/${id}`;
+    
+  return fetchWithAuth(endpoint);
 }
 
 export async function createAppointment(appointmentData) {
@@ -303,9 +366,19 @@ export async function deleteAppointment(id) {
     endpoint = `/staff/appointments/${id}`;
   }
   
-  return fetchWithAuth(endpoint, {
-    method: "DELETE",
-  });
+  console.log(`🗑️ Deleting appointment ${id} as ${user.role} using endpoint: ${endpoint}`);
+  console.log(`🔑 Full URL: ${API_BASE}${endpoint}`);
+  
+  try {
+    const result = await fetchWithAuth(endpoint, {
+      method: "DELETE",
+    });
+    console.log(`✅ Delete result:`, result);
+    return result;
+  } catch (error) {
+    console.error(`❌ Delete error:`, error);
+    throw error;
+  }
 }
 
 // ✅ Helper Functions for Appointments
@@ -368,13 +441,37 @@ export function createDateTimeString(date, time) {
 
 // ✅ Packages API Functions
 export async function getPackages(filters = {}) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const queryParams = new URLSearchParams(filters).toString();
-  const url = `/admin/packages${queryParams ? `?${queryParams}` : ''}`;
+  
+  // Use role-based endpoint
+  let url;
+  if (user.role === 'client') {
+    url = `/client/packages${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'admin') {
+    url = `/admin/packages${queryParams ? `?${queryParams}` : ''}`;
+  } else {
+    url = `/staff/packages${queryParams ? `?${queryParams}` : ''}`;
+  }
+  
+  console.log(`📦 Fetching packages as ${user.role} from: ${url}`);
   return fetchWithAuth(url);
 }
 
 export async function getPackage(id) {
-  return fetchWithAuth(`/admin/packages/${id}`);
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Use role-based endpoint
+  let endpoint;
+  if (user.role === 'client') {
+    endpoint = `/client/packages/${id}`;
+  } else if (user.role === 'admin') {
+    endpoint = `/admin/packages/${id}`;
+  } else {
+    endpoint = `/staff/packages/${id}`;
+  }
+  
+  return fetchWithAuth(endpoint);
 }
 
 export async function createPackage(packageData) {
@@ -410,13 +507,37 @@ export async function getMyPackages() {
 
 // ✅ Services API Functions
 export async function getServices(filters = {}) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const queryParams = new URLSearchParams(filters).toString();
-  const url = `/admin/services${queryParams ? `?${queryParams}` : ''}`;
+  
+  // Use role-based endpoint
+  let url;
+  if (user.role === 'client') {
+    url = `/client/services${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'admin') {
+    url = `/admin/services${queryParams ? `?${queryParams}` : ''}`;
+  } else {
+    url = `/staff/services${queryParams ? `?${queryParams}` : ''}`;
+  }
+  
+  console.log(`🏥 Fetching services as ${user.role} from: ${url}`);
   return fetchWithAuth(url);
 }
 
 export async function getService(id) {
-  return fetchWithAuth(`/admin/services/${id}`);
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Use role-based endpoint
+  let endpoint;
+  if (user.role === 'client') {
+    endpoint = `/client/services/${id}`;
+  } else if (user.role === 'admin') {
+    endpoint = `/admin/services/${id}`;
+  } else {
+    endpoint = `/staff/services/${id}`;
+  }
+  
+  return fetchWithAuth(endpoint);
 }
 
 export async function createService(serviceData) {
@@ -441,13 +562,37 @@ export async function deleteService(id) {
 
 // ✅ Payments API Functions
 export async function getPayments(filters = {}) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const queryParams = new URLSearchParams(filters).toString();
-  const url = `/admin/payments${queryParams ? `?${queryParams}` : ''}`;
+  
+  // Use role-based endpoint
+  let url;
+  if (user.role === 'client') {
+    url = `/client/payments${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'admin') {
+    url = `/admin/payments${queryParams ? `?${queryParams}` : ''}`;
+  } else {
+    url = `/staff/payments${queryParams ? `?${queryParams}` : ''}`;
+  }
+  
+  console.log(`💳 Fetching payments as ${user.role} from: ${url}`);
   return fetchWithAuth(url);
 }
 
 export async function getPayment(id) {
-  return fetchWithAuth(`/admin/payments/${id}`);
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Use role-based endpoint
+  let endpoint;
+  if (user.role === 'client') {
+    endpoint = `/client/payments/${id}`;
+  } else if (user.role === 'admin') {
+    endpoint = `/admin/payments/${id}`;
+  } else {
+    endpoint = `/staff/payments/${id}`;
+  }
+  
+  return fetchWithAuth(endpoint);
 }
 
 export async function createPayment(paymentData) {
@@ -661,12 +806,20 @@ export async function updateBusinessSettings(settingsData) {
 }
 
 // ✅ Profile Management API Functions
+// Note: All authenticated users can use /profile endpoint
+// The backend ProfileController enforces that users can only access their own profile
 export async function getUserProfile() {
-  return fetchWithAuth("/profile");
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  // For clients, use the client-specific route to ensure proper authentication
+  const endpoint = user.role === 'client' ? '/client/me/profile' : '/profile';
+  return fetchWithAuth(endpoint);
 }
 
 export async function updateUserProfile(profileData) {
-  return fetchWithAuth("/profile", {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  // For clients, use the client-specific route to ensure proper authentication
+  const endpoint = user.role === 'client' ? '/client/me/profile' : '/profile';
+  return fetchWithAuth(endpoint, {
     method: "PUT",
     body: JSON.stringify(profileData),
   });
@@ -676,19 +829,30 @@ export async function uploadProfilePhoto(file) {
   const formData = new FormData();
   formData.append('profile_photo', file);
   
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const token = localStorage.getItem("token");
   const headers = {
     "Accept": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
+  // For clients, use the client-specific route to ensure proper authentication
+  const endpoint = user.role === 'client' ? '/client/me/profile/photo' : '/profile/photo';
+
   try {
-    console.log(`🔗 Uploading profile photo`);
-    const res = await fetch(`${API_BASE}/profile/photo`, {
+    console.log(`🔗 Uploading profile photo to: ${API_BASE}${endpoint}`);
+    console.log(`🔑 Token present: ${!!token}`);
+    if (token) {
+      console.log(`🔑 Token (first 20 chars): ${token.substring(0, 20)}...`);
+    }
+    
+    const res = await fetch(`${API_BASE}${endpoint}`, {
       method: "POST",
       headers,
       body: formData,
     });
+    
+    console.log(`📡 Photo upload response status: ${res.status} ${res.statusText}`);
     
     if (!res.ok) {
       // Check if the error response is JSON
@@ -696,7 +860,8 @@ export async function uploadProfilePhoto(file) {
       if (contentType && contentType.includes("application/json")) {
         try {
           const error = await res.json();
-          throw new Error(error.message || `Upload failed: ${res.status} ${res.statusText}`);
+          console.log("🔐 Photo upload error response:", error);
+          throw new Error(error.message || error.error || `Upload failed: ${res.status} ${res.statusText}`);
         } catch (parseError) {
           console.error("❌ Failed to parse upload error response:", parseError);
           throw new Error(`Upload failed: ${res.status} ${res.statusText}`);

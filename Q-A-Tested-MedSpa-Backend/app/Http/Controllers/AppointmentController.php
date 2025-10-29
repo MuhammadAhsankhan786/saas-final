@@ -402,49 +402,77 @@ class AppointmentController extends Controller
     /**
      * Remove the specified appointment.
      */
-    public function destroy(Appointment $appointment)
+    public function destroy($id)
     {
         $user = Auth::user();
         
-        // Admin can delete any appointment with audit log
-        if ($user->role === 'admin') {
-            // Log audit entry before deletion
-            \App\Models\AuditLog::create([
+        try {
+            $appointment = Appointment::find($id);
+            
+            if (!$appointment) {
+                return response()->json(['message' => 'Appointment not found'], 404);
+            }
+            
+            Log::info('Delete appointment request', [
                 'user_id' => $user->id,
-                'action' => 'delete',
-                'table_name' => 'appointments',
-                'record_id' => $appointment->id,
-                'old_data' => $appointment->toArray(),
-                'new_data' => null,
+                'user_role' => $user->role,
+                'appointment_id' => $appointment->id,
+                'appointment_client_id' => $appointment->client_id,
             ]);
             
-            $appointment->delete();
+            // Admin can delete any appointment with audit log
+            if ($user->role === 'admin') {
+                // Log audit entry before deletion
+                \App\Models\AuditLog::create([
+                    'user_id' => $user->id,
+                    'action' => 'delete',
+                    'table_name' => 'appointments',
+                    'record_id' => $appointment->id,
+                    'old_data' => $appointment->toArray(),
+                    'new_data' => null,
+                ]);
+                
+                $appointment->delete();
+                
+                return response()->json(['message' => 'Appointment deleted successfully']);
+            }
             
-            return response()->json(['message' => 'Appointment deleted successfully']);
-        }
-        
-        // Reception can delete appointments
-        if ($user->role === 'reception') {
+            // Reception can delete appointments
+            if ($user->role === 'reception') {
+                $appointment->delete();
+                return response()->json(['message' => 'Appointment deleted successfully']);
+            }
+            
+            // Client can only delete their own appointments
+            if ($user->role !== 'client') {
+                return response()->json(['message' => 'Unauthorized'], 401);
+            }
+            
+            $client = Client::where('user_id', $user->id)->first();
+            if (!$client) {
+                Log::error('Client profile not found', ['user_id' => $user->id]);
+                return response()->json(['message' => 'Client profile not found'], 404);
+            }
+            
+            Log::info('Client delete check', [
+                'appointment_client_id' => $appointment->client_id,
+                'logged_in_client_id' => $client->id,
+                'match' => $appointment->client_id === $client->id,
+            ]);
+            
+            if ($appointment->client_id !== $client->id) {
+                return response()->json(['message' => 'Unauthorized - Cannot delete other clients\' appointments'], 403);
+            }
+
             $appointment->delete();
+
             return response()->json(['message' => 'Appointment deleted successfully']);
+        } catch (\Exception $e) {
+            Log::error('Error deleting appointment', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['message' => 'Error deleting appointment: ' . $e->getMessage()], 500);
         }
-        
-        // Client can only delete their own appointments
-        if ($user->role !== 'client') {
-            return response()->json(['message' => 'Unauthorized'], 401);
-        }
-        
-        $client = Client::where('user_id', $user->id)->first();
-        if (!$client) {
-            return response()->json(['message' => 'Client profile not found'], 404);
-        }
-        
-        if ($appointment->client_id !== $client->id) {
-            return response()->json(['message' => 'Unauthorized - Cannot delete other clients\' appointments'], 403);
-        }
-
-        $appointment->delete();
-
-        return response()->json(['message' => 'Appointment deleted successfully']);
     }
 }

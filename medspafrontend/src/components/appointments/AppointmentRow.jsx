@@ -95,21 +95,10 @@ export function AppointmentRow({
 
   const handleDelete = async () => {
     if (readOnly) return;
-    if (!confirm("Are you sure you want to delete this appointment?")) {
-      return;
-    }
-
-    setIsDeleting(true);
-    try {
-      await deleteAppointment(appointment.id);
-      onDelete?.(appointment.id);
-      onRefresh?.();
-      notify.success("Appointment deleted successfully");
-    } catch (error) {
-      console.error("Error deleting appointment:", error);
-      notify.error("Failed to delete appointment: " + error.message);
-    } finally {
-      setIsDeleting(false);
+    
+    // Call parent's delete handler which has proper confirmation
+    if (onDelete) {
+      onDelete(appointment.id);
     }
   };
 

@@ -106,11 +106,13 @@ export function Packages({ onPageChange }) {
   }, []);
 
   const filteredPackages = packages.filter((pkg) => {
+    if (!pkg) return false;
+    
     const matchesSearch = 
-      pkg.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pkg.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (pkg.name && pkg.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (pkg.description && pkg.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (pkg.services_included && Array.isArray(pkg.services_included) && 
-       pkg.services_included.some(service => service.toLowerCase().includes(searchQuery.toLowerCase())));
+       pkg.services_included.some(service => service && service.toLowerCase().includes(searchQuery.toLowerCase())));
 
     return matchesSearch;
   });
