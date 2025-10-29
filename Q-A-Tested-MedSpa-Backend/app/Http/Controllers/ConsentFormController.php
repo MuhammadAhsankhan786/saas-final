@@ -22,6 +22,11 @@ class ConsentFormController extends Controller
             } else {
                 return response()->json(['message' => 'Client profile not found'], 404);
             }
+        } elseif ($user->role === 'provider') {
+            // Provider only sees consent forms for their assigned clients
+            $query->whereHas('client', function ($q) use ($user) {
+                $q->where('preferred_provider_id', $user->id);
+            });
         }
 
         return response()->json($query->get());
@@ -32,6 +37,18 @@ class ConsentFormController extends Controller
      */
     public function store(Request $request)
     {
+        $user = auth()->user();
+        
+        // Client can only create consent forms for themselves
+        if ($user->role === 'client') {
+            $client = \App\Models\Client::where('user_id', $user->id)->first();
+            if (!$client) {
+                return response()->json(['message' => 'Client profile not found'], 404);
+            }
+            // Force client_id to be the logged-in client's ID
+            $request->merge(['client_id' => $client->id]);
+        }
+        
         $request->validate([
             'client_id'        => 'required|exists:clients,id',
             'service_id'       => 'required|exists:services,id',
@@ -73,6 +90,11 @@ class ConsentFormController extends Controller
             if (!$client || $consentForm->client_id !== $client->id) {
                 return response()->json(['message' => 'Unauthorized'], 403);
             }
+        } elseif ($user->role === 'provider') {
+            // Provider can only see consent forms for their assigned clients
+            if ($consentForm->client->preferred_provider_id !== $user->id) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
         }
 
         return response()->json($consentForm);
@@ -84,6 +106,15 @@ class ConsentFormController extends Controller
     public function update(Request $request, string $id)
     {
         $consentForm = ConsentForm::findOrFail($id);
+        $user = auth()->user();
+
+        // Client can only update their own consent forms
+        if ($user->role === 'client') {
+            $client = \App\Models\Client::where('user_id', $user->id)->first();
+            if (!$client || $consentForm->client_id !== $client->id) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+        }
 
         $request->validate([
             'form_type'        => 'nullable|in:consent,GFE,intake',
@@ -109,6 +140,16 @@ class ConsentFormController extends Controller
     public function destroy(string $id)
     {
         $consentForm = ConsentForm::findOrFail($id);
+        $user = auth()->user();
+
+        // Client can only delete their own consent forms
+        if ($user->role === 'client') {
+            $client = \App\Models\Client::where('user_id', $user->id)->first();
+            if (!$client || $consentForm->client_id !== $client->id) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+        }
+
         $consentForm->delete();
 
         return response()->json(['message' => 'Consent form deleted successfully']);

@@ -64,7 +64,9 @@ class Client extends Model
     // Client has many Packages through ClientPackage
     public function packages()
     {
-        return $this->belongsToMany(Package::class, 'client_packages');
+        return $this->belongsToMany(Package::class, 'client_packages', 'client_id', 'package_id')
+                    ->withPivot('assigned_at')
+                    ->withTimestamps();
     }
 
     protected function casts(): array

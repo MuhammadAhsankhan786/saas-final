@@ -49,6 +49,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { getStockAlerts, getStockAlertStatistics, dismissStockAlert, resolveStockAlert } from "@/lib/api";
+import { notify } from "@/lib/toast";
+import { useConfirm } from "../ui/confirm-dialog";
 
 export function StockAlerts({ onPageChange }) {
   const [stockAlerts, setStockAlerts] = useState([]);
@@ -60,6 +62,7 @@ export function StockAlerts({ onPageChange }) {
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const { confirm, dialog } = useConfirm();
 
   // Load stock alerts from API
   useEffect(() => {
@@ -153,11 +156,18 @@ export function StockAlerts({ onPageChange }) {
   const handleRestock = (alertId) => {
     // Here you would typically open a restock modal
     console.log(`Restocking product for alert ${alertId}`);
-    alert("Restock functionality would open here");
+    notify.info("Restock functionality would open here");
   };
 
   const handleDismissAlert = async (alertId) => {
-    if (confirm("Are you sure you want to dismiss this alert?")) {
+    const confirmed = await confirm({
+      title: "Dismiss Alert",
+      description: "Are you sure you want to dismiss this alert?",
+      confirmText: "Dismiss",
+      cancelText: "Cancel",
+    });
+
+    if (confirmed) {
       setIsProcessing(true);
       setError(null);
       try {
@@ -165,19 +175,21 @@ export function StockAlerts({ onPageChange }) {
         // Reload alerts
         const data = await getStockAlerts();
         setStockAlerts(data || []);
+        notify.success("Alert dismissed successfully");
       } catch (err) {
         console.error("Error dismissing alert:", err);
+        notify.error(err.message || "Failed to dismiss alert.");
         setError(err.message || "Failed to dismiss alert.");
       } finally {
         setIsProcessing(false);
       }
     }
-  };
+};
 
   const handleMarkAsOrdered = (alertId) => {
     // Here you would typically mark the product as ordered
     console.log(`Marking product as ordered for alert ${alertId}`);
-    alert("Product marked as ordered successfully");
+    notify.success("Product marked as ordered successfully");
   };
 
   if (loading) {
@@ -199,8 +211,10 @@ export function StockAlerts({ onPageChange }) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <>
+      {dialog}
+      <div className="space-y-6">
+        {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Button
@@ -607,5 +621,6 @@ export function StockAlerts({ onPageChange }) {
         </DialogContent>
       </Dialog>
     </div>
+    </>
   );
 }

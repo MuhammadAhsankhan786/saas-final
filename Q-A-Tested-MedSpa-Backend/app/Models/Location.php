@@ -12,9 +12,13 @@ class Location extends Model
     protected $fillable = [
         'name',
         'address',
+        'city',
+        'state',
+        'zip_code',
         'timezone',
         'contact_phone',
         'contact_email',
+        'zip',
     ];
 
     // Many-to-many: ek location me multiple staff

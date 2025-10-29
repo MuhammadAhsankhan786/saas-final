@@ -129,19 +129,19 @@ const navigationItems = [
     id: "inventory",
     label: "Inventory",
     icon: Package,
-    roles: ["admin", "provider"],
+    roles: ["admin", "provider", "reception"],
     children: [
       {
         id: "inventory/products",
         label: "Products",
         icon: Package,
-        roles: ["admin", "provider"],
+        roles: ["admin", "provider", "reception"],
       },
       {
         id: "inventory/alerts",
         label: "Stock Alerts",
         icon: Package,
-        roles: ["admin", "provider"],
+        roles: ["admin", "provider", "reception"],
       },
     ],
   },
@@ -224,9 +224,149 @@ export function Sidebar({ currentPage, onPageChange }) {
 
   if (!user) return null;
 
-  const filteredNavItems = navigationItems.filter((item) =>
+  let filteredNavItems = navigationItems.filter((item) =>
     item.roles.includes(user.role)
   );
+
+  // Strict admin UI isolation: show only allowed modules and children (READ-ONLY ACCESS)
+  if (user.role === "admin") {
+    const allowedTopLevel = new Set([
+      "dashboard",
+      "appointments",
+      "clients",
+      "payments",
+      "inventory",
+      "reports",
+      "compliance",
+      "settings",
+      // Explicitly EXCLUDE: treatments (consents, notes, photos)
+    ]);
+
+    const allowedChildrenByParent = {
+      // Appointments: Only "All Appointments" view (no calendar, no booking)
+      "appointments": new Set(["appointments/list"]),
+      // Clients: Only view list (no add/edit)
+      "clients": new Set(["clients/list"]),
+      // Payments: Only payment history (no POS, no packages)
+      "payments": new Set(["payments/history"]),
+      // Inventory: Only view products and alerts (read-only)
+      "inventory": new Set(["inventory/products", "inventory/alerts"]),
+      // Reports: All allowed (read-only)
+      "reports": new Set(["reports/revenue", "reports/clients", "reports/staff"]),
+      // Compliance: Only audit log and alerts view (read-only)
+      "compliance": new Set(["compliance/audit", "compliance/alerts"]),
+      // Settings: Only staff management view (no business settings)
+      "settings": new Set(["settings/profile", "settings/staff"]),
+    };
+
+    filteredNavItems = navigationItems
+      .filter((item) => allowedTopLevel.has(item.id))
+      .map((item) => {
+        const allowedChildren = allowedChildrenByParent[item.id];
+        const children = Array.isArray(item.children) ? item.children : [];
+        const prunedChildren = allowedChildren
+          ? children.filter((child) => allowedChildren.has(child.id))
+          : [];
+        return { ...item, children: prunedChildren };
+      });
+  }
+
+  // Provider role UI isolation: show only provider-accessible modules
+  if (user.role === "provider") {
+    const allowedTopLevel = new Set([
+      "dashboard",
+      "appointments",
+      "treatments",
+      "inventory",
+      "compliance",
+      "settings",
+    ]);
+
+    const allowedChildrenByParent = {
+      // Appointments: View only (no calendar, no booking for provider)
+      "appointments": new Set(["appointments/list"]),
+      // Treatments: Full CRUD access (own treatments only)
+      "treatments": new Set(["treatments/consents", "treatments/notes", "treatments/photos"]),
+      // Inventory: View only
+      "inventory": new Set(["inventory/products", "inventory/alerts"]),
+      // Compliance: View only (own alerts)
+      "compliance": new Set(["compliance/alerts"]),
+      // Settings: Profile only (no business, no staff management)
+      "settings": new Set(["settings/profile"]),
+    };
+
+    filteredNavItems = navigationItems
+      .filter((item) => allowedTopLevel.has(item.id))
+      .map((item) => {
+        const allowedChildren = allowedChildrenByParent[item.id];
+        const children = Array.isArray(item.children) ? item.children : [];
+        const prunedChildren = allowedChildren
+          ? children.filter((child) => allowedChildren.has(child.id))
+          : [];
+        return { ...item, children: prunedChildren };
+      });
+  }
+
+  // Reception role UI isolation
+  if (user.role === "reception") {
+    const allowedTopLevel = new Set([
+      "dashboard",
+      "appointments",
+      "clients",
+      "payments",
+      "inventory",
+      "settings",
+    ]);
+
+    const allowedChildrenByParent = {
+      "appointments": new Set(["appointments/calendar", "appointments/list", "appointments/book"]),
+      "clients": new Set(["clients/list", "clients/add"]),
+      "payments": new Set(["payments/pos", "payments/history", "payments/packages"]),
+      "inventory": new Set(["inventory/products", "inventory/alerts"]),
+      "settings": new Set(["settings/profile"]),
+    };
+
+    filteredNavItems = navigationItems
+      .filter((item) => allowedTopLevel.has(item.id))
+      .map((item) => {
+        const allowedChildren = allowedChildrenByParent[item.id];
+        const children = Array.isArray(item.children) ? item.children : [];
+        const prunedChildren = allowedChildren
+          ? children.filter((child) => allowedChildren.has(child.id))
+          : [];
+        return { ...item, children: prunedChildren };
+      });
+  }
+
+  // Client role UI isolation: show only self-service modules
+  if (user.role === "client") {
+    const allowedTopLevel = new Set([
+      "dashboard",
+      "appointments",
+      "payments",
+      "settings",
+    ]);
+
+    const allowedChildrenByParent = {
+      // Appointments: Book and view own list (no calendar)
+      "appointments": new Set(["appointments/book", "appointments/list"]),
+      // Payments: View own payment history
+      "payments": new Set(["payments/history", "payments/packages"]),
+      // Settings: Profile only
+      "settings": new Set(["settings/profile"]),
+    };
+
+    filteredNavItems = navigationItems
+      .filter((item) => allowedTopLevel.has(item.id))
+      .map((item) => {
+        const allowedChildren = allowedChildrenByParent[item.id];
+        const children = Array.isArray(item.children) ? item.children : [];
+        const prunedChildren = allowedChildren
+          ? children.filter((child) => allowedChildren.has(child.id))
+          : [];
+        return { ...item, children: prunedChildren };
+      });
+  }
 
   return (
     <div className="w-64 h-screen bg-sidebar border-r border-sidebar-border flex flex-col">
@@ -264,45 +404,61 @@ export function Sidebar({ currentPage, onPageChange }) {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-        {filteredNavItems.map((item) => (
-          <div key={item.id}>
-            <Button
-              variant={currentPage === item.id ? "default" : "ghost"}
-              className={`w-full justify-start ${
-                currentPage === item.id
-                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                  : "text-foreground hover:bg-primary/5 hover:text-primary"
-              }`}
-              onClick={() => onPageChange(item.id)}
-            >
-              <item.icon className="mr-3 h-4 w-4" />
-              {item.label}
-            </Button>
+        {filteredNavItems.map((item) => {
+          const isActive = currentPage === item.id;
+          
+          return (
+            <div key={item.id}>
+              <Button
+                variant={isActive ? "default" : "ghost"}
+                className={`w-full justify-start ${
+                  isActive
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "text-foreground hover:bg-primary/5 hover:text-primary"
+                }`}
+                data-nav-item={item.label}
+                onClick={() => {
+                  onPageChange(item.id);
+                  console.log("✅ Sidebar navigation working — route changed successfully!");
+                }}
+              >
+                <item.icon className="mr-3 h-4 w-4" />
+                {item.label}
+              </Button>
 
-            {item.children && (
-              <div className="ml-4 mt-1 space-y-1">
-                {item.children
-                  .filter((child) => child.roles.includes(user.role))
-                  .map((child) => (
-                    <Button
-                      key={child.id}
-                      variant={currentPage === child.id ? "default" : "ghost"}
-                      size="sm"
-                      className={`w-full justify-start ${
-                        currentPage === child.id
-                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                          : "text-foreground hover:bg-primary/5 hover:text-primary"
-                      }`}
-                      onClick={() => onPageChange(child.id)}
-                    >
-                      <child.icon className="mr-3 h-3 w-3" />
-                      {child.label}
-                    </Button>
-                  ))}
-              </div>
-            )}
-          </div>
-        ))}
+              {item.children && (
+                <div className="ml-4 mt-1 space-y-1">
+                  {item.children
+                    .filter((child) => child.roles.includes(user.role))
+                    .map((child) => {
+                      const isChildActive = currentPage === child.id;
+                      
+                      return (
+                        <Button
+                          key={child.id}
+                          variant={isChildActive ? "default" : "ghost"}
+                          size="sm"
+                          className={`w-full justify-start ${
+                            isChildActive
+                              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                              : "text-foreground hover:bg-primary/5 hover:text-primary"
+                          }`}
+                          data-nav-item={child.label}
+                          onClick={() => {
+                            onPageChange(child.id);
+                            console.log("✅ Sidebar navigation working — route changed successfully!");
+                          }}
+                        >
+                          <child.icon className="mr-3 h-3 w-3" />
+                          {child.label}
+                        </Button>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
       {/* Logout */}

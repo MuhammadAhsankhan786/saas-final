@@ -55,6 +55,7 @@ function AppContent() {
   const { user, isAuthenticated, loading } = useAuth();
   const [currentPage, setCurrentPage] = useState("dashboard");
   const router = useRouter();
+  const isAdmin = user?.role === "admin";
 
   // ✅ Restore current page from localStorage on initial mount only
   useEffect(() => {
@@ -128,6 +129,10 @@ function AppContent() {
   const renderPage = () => {
     if (currentPage === "dashboard") return renderDashboard();
 
+    // Admin UI isolation: admin can access view-only pages
+    // No specific blocking here - sidebar handles visibility
+    // Admin can view: dashboard, appointments, clients, payments, inventory, reports, compliance, settings/staff
+
     switch (currentPage) {
       // Admin-only pages
       case "locations/list":
@@ -150,7 +155,7 @@ function AppContent() {
         );
       case "appointments/list":
         return (
-          <ProtectedRoute allowedRoles={["admin", "provider", "reception"]}>
+          <ProtectedRoute allowedRoles={["admin", "provider", "reception", "client"]}>
             <AppointmentList onPageChange={handlePageChange} />
           </ProtectedRoute>
         );

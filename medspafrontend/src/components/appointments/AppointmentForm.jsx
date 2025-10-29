@@ -24,9 +24,15 @@ import {
   getServices,
   getPackages,
   getClients,
+  fetchWithAuth,
+  getAppointmentFormData,
 } from "@/lib/api";
 
 export default function AppointmentForm({ appointment = null, onSuccess, onPageChange }) {
+  // Get user role
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const isClient = user.role === "client";
+  
   const [formData, setFormData] = useState({
     client_id: appointment?.client_id || "",
     provider_id: appointment?.provider_id || "none",
@@ -50,32 +56,67 @@ export default function AppointmentForm({ appointment = null, onSuccess, onPageC
   const [services, setServices] = useState([]);
   const [packages, setPackages] = useState([]);
   const [clients, setClients] = useState([]);
+  const [clientId, setClientId] = useState(null);
   const [error, setError] = useState("");
 
   // Load data from API
   useEffect(() => {
     async function loadData() {
       try {
-        const [locationsData, usersData, servicesData, packagesData, clientsData] = await Promise.all([
-          getLocations(),
-          getUsers(),
-          getServices(),
-          getPackages(),
-          getClients(),
-        ]);
-        
-        setLocations(locationsData || []);
-        setUsers(usersData || []);
-        setServices(servicesData || []);
-        setPackages(packagesData || []);
-        setClients(clientsData || []);
+        setError("");
+        // Load data based on user role
+        if (isClient) {
+          // For clients, use the new form-data endpoint
+          const formDataResponse = await getAppointmentFormData();
+          
+          if (formDataResponse) {
+            setLocations(formDataResponse.locations || []);
+            setUsers(formDataResponse.providers || []);
+            setServices(formDataResponse.services || []);
+            setPackages(formDataResponse.packages || []);
+            
+            // Set client's own info if available from formData
+            if (formDataResponse.client) {
+              setClients([formDataResponse.client]);
+              setFormData(prev => ({ 
+                ...prev, 
+                client_id: formDataResponse.client.id,
+                location_id: formDataResponse.client.location_id 
+              }));
+            }
+          }
+          
+          // Get location_id from user profile if not set
+          const clientData = await fetchWithAuth("/me");
+          if (clientData && !formDataResponse?.client) {
+            setFormData(prev => ({ 
+              ...prev, 
+              location_id: clientData.location_id 
+            }));
+          }
+        } else {
+          // For admin/reception/staff - use standard admin endpoints
+          const [locationsData, usersData, servicesData, packagesData, clientsData] = await Promise.all([
+            getLocations(),
+            getUsers(),
+            getServices(),
+            getPackages(),
+            getClients(),
+          ]);
+          
+          setLocations(locationsData || []);
+          setUsers(usersData || []);
+          setServices(servicesData || []);
+          setPackages(packagesData || []);
+          setClients(clientsData || []);
+        }
       } catch (error) {
         console.error("Error loading data:", error);
-        setError("Failed to load form data");
+        setError("Failed to load form data. Please refresh the page.");
       }
     }
     loadData();
-  }, []);
+  }, [isClient]);
 
   // handle input change
   const handleChange = (key, value) => {
@@ -162,6 +203,7 @@ export default function AppointmentForm({ appointment = null, onSuccess, onPageC
             <Select
               value={formData.client_id ? String(formData.client_id) : ""}
               onValueChange={(value) => handleChange("client_id", value)}
+              disabled={isClient}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select client" />
@@ -315,7 +357,7 @@ export default function AppointmentForm({ appointment = null, onSuccess, onPageC
               <SelectContent>
                 <SelectItem value="booked">Booked</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="canceled">Canceled</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
           </div>

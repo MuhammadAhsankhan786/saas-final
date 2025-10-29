@@ -54,6 +54,8 @@ import {
 import { getProducts, createProduct, updateProduct, deleteProduct, adjustStock } from "@/lib/api";
 
 export function InventoryProducts({ onPageChange }) {
+  const role = JSON.parse(localStorage.getItem("user") || "{}").role;
+  const isAdmin = role === "admin";
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -539,6 +541,7 @@ export function InventoryProducts({ onPageChange }) {
             <Download className="mr-2 h-4 w-4" />
             Export Inventory
           </Button>
+          {!isAdmin && (
           <Dialog open={isCreateProductOpen} onOpenChange={setIsCreateProductOpen}>
             <DialogTrigger asChild>
               <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
@@ -689,6 +692,7 @@ export function InventoryProducts({ onPageChange }) {
               </div>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </div>
 
@@ -870,7 +874,7 @@ export function InventoryProducts({ onPageChange }) {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
-                          <Button
+                      <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleViewDetails(product)}
@@ -878,7 +882,8 @@ export function InventoryProducts({ onPageChange }) {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button
+                      {!isAdmin && (
+                      <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleEditProduct(product)}
@@ -886,7 +891,9 @@ export function InventoryProducts({ onPageChange }) {
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button
+                      )}
+                      {!isAdmin && (
+                      <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleRestock(product.id, 10)}
@@ -894,7 +901,9 @@ export function InventoryProducts({ onPageChange }) {
                           >
                             Restock
                           </Button>
-                          <Button
+                      )}
+                      {!isAdmin && (
+                      <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleDeleteProduct(product.id)}
@@ -902,6 +911,7 @@ export function InventoryProducts({ onPageChange }) {
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
+                      )}
                         </div>
                       </TableCell>
                     </TableRow>

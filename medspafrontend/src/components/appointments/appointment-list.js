@@ -14,6 +14,8 @@ import {
 } from "@/lib/api";
 import { AppointmentRow } from "./AppointmentRow";
 import AppointmentForm from "./AppointmentForm";
+import { notify } from "@/lib/toast";
+import { useConfirm } from "../ui/confirm-dialog";
 import {
   Card,
   CardContent,
@@ -65,9 +67,12 @@ import {
 } from "lucide-react";
 
 // Status options matching backend enum
-const statusOptions = ["All", "booked", "completed", "canceled"];
+const statusOptions = ["All", "booked", "completed", "cancelled"];
 
 export function AppointmentList({ onPageChange }) {
+  const role = JSON.parse(localStorage.getItem("user") || "{}").role;
+  const isAdmin = role === "admin";
+  const { confirm, dialog } = useConfirm();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -82,8 +87,10 @@ export function AppointmentList({ onPageChange }) {
     async function fetchAppointments() {
       try {
         setLoading(true);
-        // Use client appointments endpoint for client role
-        const data = await getMyAppointments();
+        // Admin uses admin endpoint, others use client endpoint
+        const data = isAdmin 
+          ? await getAppointments() 
+          : await getMyAppointments();
         console.log("📋 Appointments fetched:", data);
         // Format appointments for display
         const formattedAppointments = Array.isArray(data) 
@@ -98,7 +105,7 @@ export function AppointmentList({ onPageChange }) {
       }
     }
     fetchAppointments();
-  }, []);
+  }, [isAdmin]);
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -106,7 +113,7 @@ export function AppointmentList({ onPageChange }) {
         return <CheckCircle className="h-4 w-4 text-blue-500" />;
       case "completed":
         return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "canceled":
+      case "cancelled":
         return <XCircle className="h-4 w-4 text-red-500" />;
       default:
         return <AlertCircle className="h-4 w-4 text-gray-500" />;
@@ -119,7 +126,7 @@ export function AppointmentList({ onPageChange }) {
         return "default";
       case "completed":
         return "outline";
-      case "canceled":
+      case "cancelled":
         return "destructive";
       default:
         return "outline";
@@ -153,20 +160,24 @@ export function AppointmentList({ onPageChange }) {
 
   const handleStatusChange = async (appointmentId, newStatus) => {
     if (!isValidStatus(newStatus)) {
-      alert("Invalid status selected");
+      notify.error("Invalid status selected");
       return;
     }
     
     try {
       await updateAppointmentStatus(appointmentId, newStatus);
-      // Refresh appointments list
-      const data = await getAppointments();
-      const formattedAppointments = data.map(formatAppointmentForDisplay);
+      // Refresh appointments list using role-based endpoint
+      const data = isAdmin 
+        ? await getAppointments() 
+        : await getMyAppointments();
+      const formattedAppointments = Array.isArray(data) 
+        ? data.map(formatAppointmentForDisplay)
+        : [];
       setAppointments(formattedAppointments);
-      alert(`Appointment status updated to ${newStatus}`);
+      notify.success(`Appointment status updated to ${newStatus}`);
     } catch (error) {
       console.error("Error updating appointment status:", error);
-      alert("Failed to update appointment status: " + error.message);
+      notify.error("Failed to update appointment status: " + error.message);
     }
   };
 
@@ -177,55 +188,78 @@ export function AppointmentList({ onPageChange }) {
 
   const handleRefreshAppointments = async () => {
     try {
-      const data = await getAppointments();
-      const formattedAppointments = data.map(formatAppointmentForDisplay);
+      // Use role-based endpoint
+      const data = isAdmin 
+        ? await getAppointments() 
+        : await getMyAppointments();
+      const formattedAppointments = Array.isArray(data) 
+        ? data.map(formatAppointmentForDisplay)
+        : [];
       setAppointments(formattedAppointments);
     } catch (error) {
       console.error("Error refreshing appointments:", error);
+      notify.error("Failed to refresh appointments");
     }
   };
 
   const handleDeleteAppointment = async (appointmentId) => {
-    if (confirm("Are you sure you want to delete this appointment?")) {
+    const confirmed = await confirm({
+      title: "Delete Appointment",
+      description: "Are you sure you want to delete this appointment?",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+    });
+
+    if (confirmed) {
       try {
         await deleteAppointment(appointmentId);
-        // Refresh appointments list
-        const data = await getAppointments();
-        const formattedAppointments = data.map(formatAppointmentForDisplay);
+        // Refresh appointments list using role-based endpoint
+        const data = isAdmin 
+          ? await getAppointments() 
+          : await getMyAppointments();
+        const formattedAppointments = Array.isArray(data) 
+          ? data.map(formatAppointmentForDisplay)
+          : [];
         setAppointments(formattedAppointments);
-        alert("Appointment deleted successfully");
+        notify.success("Appointment deleted successfully");
       } catch (error) {
         console.error("Error deleting appointment:", error);
-        alert("Failed to delete appointment: " + error.message);
+        notify.error("Failed to delete appointment: " + error.message);
       }
     }
   };
 
   return (
-    <div className="space-y-6">
+    <>
+      {dialog}
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Button
-            variant="outline"
-            onClick={() => onPageChange("appointments/calendar")}
-            className="border-border hover:bg-primary/5"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Calendar
-          </Button>
+          {!isAdmin && (
+            <Button
+              variant="outline"
+              onClick={() => onPageChange("appointments/calendar")}
+              className="border-border hover:bg-primary/5"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Calendar
+            </Button>
+          )}
           <div>
-            <h1 className="text-2xl font-bold text-foreground">All Appointments</h1>
-            <p className="text-muted-foreground">Manage and view all appointments</p>
+            <h1 className="text-2xl font-bold text-foreground">Appointments</h1>
+            <p className="text-muted-foreground">View appointments</p>
           </div>
         </div>
-        <Button
-          onClick={() => onPageChange("appointments/book")}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground"
-        >
-          <Calendar className="mr-2 h-4 w-4" />
-          New Appointment
-        </Button>
+        {!isAdmin && (
+          <Button
+            onClick={() => onPageChange("appointments/book")}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            <Calendar className="mr-2 h-4 w-4" />
+            New Appointment
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -312,10 +346,11 @@ export function AppointmentList({ onPageChange }) {
                       key={appointment.id}
                       appointment={appointment}
                       onViewDetails={handleViewDetails}
-                      onEdit={handleEditAppointment}
-                      onDelete={handleDeleteAppointment}
-                      onStatusChange={handleStatusChange}
+                      onEdit={isAdmin ? undefined : handleEditAppointment}
+                      onDelete={isAdmin ? undefined : handleDeleteAppointment}
+                      onStatusChange={isAdmin ? undefined : handleStatusChange}
                       onRefresh={handleRefreshAppointments}
+                      readOnly={isAdmin}
                     />
                   ))
                 )}
@@ -327,22 +362,22 @@ export function AppointmentList({ onPageChange }) {
 
       {/* Appointment Details Dialog */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="bg-card border-border max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="bg-card border-border max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader className="pb-2">
             <DialogTitle>Appointment Details</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs">
               Complete information about this appointment
             </DialogDescription>
           </DialogHeader>
           {selectedAppointment && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               {/* Client Information */}
               <div>
-                <h3 className="font-semibold text-foreground mb-3 flex items-center">
-                  <User className="mr-2 h-4 w-4" />
+                <h3 className="font-semibold text-foreground mb-2 flex items-center text-sm">
+                  <User className="mr-2 h-3 w-3" />
                   Client Information
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3 bg-muted rounded-lg text-sm">
                   <div>
                     <div className="text-sm text-muted-foreground">Client ID</div>
                     <div className="font-medium text-foreground">{selectedAppointment.client_id}</div>
@@ -370,11 +405,11 @@ export function AppointmentList({ onPageChange }) {
 
               {/* Appointment Details */}
               <div>
-                <h3 className="font-semibold text-foreground mb-3 flex items-center">
-                  <Calendar className="mr-2 h-4 w-4" />
+                <h3 className="font-semibold text-foreground mb-2 flex items-center text-sm">
+                  <Calendar className="mr-2 h-3 w-3" />
                   Appointment Details
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3 bg-muted rounded-lg text-sm">
                   <div>
                     <div className="text-sm text-muted-foreground">Provider ID</div>
                     <div className="font-medium text-foreground">{selectedAppointment.provider_id || "N/A"}</div>
@@ -439,28 +474,30 @@ export function AppointmentList({ onPageChange }) {
               {/* Notes */}
               {selectedAppointment.notes && (
                 <div>
-                  <h3 className="font-semibold text-foreground mb-3">Notes</h3>
-                  <div className="p-4 bg-muted rounded-lg">
+                  <h3 className="font-semibold text-foreground mb-2 text-sm">Notes</h3>
+                  <div className="p-3 bg-muted rounded-lg text-sm">
                     <p className="text-foreground">{selectedAppointment.notes}</p>
                   </div>
                 </div>
               )}
 
               {/* Actions */}
-              <div className="flex justify-end space-x-2">
+              <div className="flex justify-end space-x-2 pt-2">
                 <Button
                   variant="outline"
                   onClick={() => setIsDetailsOpen(false)}
-                  className="border-border hover:bg-primary/5"
+                  className="border-border hover:bg-primary/5 text-sm"
+                  size="sm"
                 >
                   Close
                 </Button>
                 <Button
                   onClick={() => handleEditAppointment(selectedAppointment)}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground text-sm"
+                  size="sm"
                 >
-                  <Edit className="mr-2 h-4 w-4" />
-                  Edit Appointment
+                  <Edit className="mr-2 h-3 w-3" />
+                  Edit
                 </Button>
               </div>
             </div>
@@ -487,6 +524,7 @@ export function AppointmentList({ onPageChange }) {
         </DialogContent>
       </Dialog>
     </div>
+    </>
   );
 }
 

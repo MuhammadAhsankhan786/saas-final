@@ -14,6 +14,23 @@ export async function fetchWithAuth(url, options = {}) {
     console.log(`🔗 Making API call to: ${API_BASE}${url}`);
     console.log(`🔑 Token present: ${!!token}`);
     
+    // Client-side guard: prevent admin from performing ANY mutations (READ-ONLY ACCESS)
+    try {
+      const method = (options.method || 'GET').toUpperCase();
+      const isMutation = method !== 'GET' && method !== 'HEAD';
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const isAdmin = user && user.role === 'admin';
+      
+      if (isAdmin && isMutation) {
+        throw new Error('Access forbidden. Admin role has read-only access. Cannot modify data.');
+      }
+    } catch (error) {
+      // Re-throw client-side guard errors
+      if (error.message.includes('Access forbidden')) {
+        throw error;
+      }
+    }
+
     const res = await fetch(`${API_BASE}${url}`, { ...options, headers });
     
     console.log(`📡 Response status: ${res.status} ${res.statusText}`);
@@ -223,6 +240,13 @@ export async function getMyAppointments(filters = {}) {
   return result;
 }
 
+export async function getAppointmentFormData() {
+  console.log('🔍 Fetching appointment form data from /client/appointments/form-data');
+  const result = await fetchWithAuth('/client/appointments/form-data');
+  console.log('📋 Form data response:', result);
+  return result;
+}
+
 export async function getAppointment(id) {
   console.log('🔍 Fetching appointment detail:', id);
   return fetchWithAuth(`/admin/appointments/${id}`);
@@ -239,21 +263,47 @@ export async function createAppointment(appointmentData) {
 }
 
 export async function updateAppointment(id, appointmentData) {
-  return fetchWithAuth(`/admin/appointments/${id}`, {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  // Use role-based endpoint
+  let endpoint;
+  if (user.role === 'client') {
+    endpoint = `/client/appointments/${id}`;
+  } else {
+    // Admin, reception, provider all use staff endpoint (admin routes are read-only)
+    endpoint = `/staff/appointments/${id}`;
+  }
+  
+  return fetchWithAuth(endpoint, {
     method: "PUT",
     body: JSON.stringify(appointmentData),
   });
 }
 
 export async function updateAppointmentStatus(id, status) {
-  return fetchWithAuth(`/admin/appointments/${id}/status`, {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  // Use client endpoint for client role
+  const endpoint = user.role === 'client' 
+    ? `/client/appointments/${id}/status` 
+    : `/admin/appointments/${id}/status`;
+  
+  return fetchWithAuth(endpoint, {
     method: "PATCH",
     body: JSON.stringify({ status }),
   });
 }
 
 export async function deleteAppointment(id) {
-  return fetchWithAuth(`/client/appointments/${id}`, {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  // Use role-based endpoint
+  let endpoint;
+  if (user.role === 'client') {
+    endpoint = `/client/appointments/${id}`;
+  } else {
+    // Admin, reception, provider use staff endpoint
+    endpoint = `/staff/appointments/${id}`;
+  }
+  
+  return fetchWithAuth(endpoint, {
     method: "DELETE",
   });
 }
@@ -297,7 +347,7 @@ export function formatAppointmentForAPI(formData) {
 }
 
 export function isValidStatus(status) {
-  const validStatuses = ["booked", "completed", "canceled"];
+  const validStatuses = ["booked", "completed", "cancelled"];
   return validStatuses.includes(status);
 }
 

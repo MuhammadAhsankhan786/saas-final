@@ -28,6 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { notify } from "@/lib/toast";
+import { useConfirm } from "../ui/confirm-dialog";
 import {
   Search,
   Filter,
@@ -58,6 +60,9 @@ import {
 } from "@/lib/api";
 
 export function ClientList({ onPageChange }) {
+  const role = JSON.parse(localStorage.getItem("user") || "{}").role;
+  const isAdmin = role === "admin";
+  const { confirm, dialog } = useConfirm();
   const [clients, setClients] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -157,15 +162,24 @@ export function ClientList({ onPageChange }) {
   };
 
   const handleDeleteClient = async (clientId) => {
-    if (!confirm("Are you sure you want to delete this client?")) {
+    const confirmed = await confirm({
+      title: "Delete Client",
+      description: "Are you sure you want to delete this client?",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+    });
+
+    if (!confirmed) {
       return;
     }
 
     try {
       await deleteClient(clientId);
       setClients(clients.filter(client => client && client.id !== clientId));
+      notify.success("Client deleted successfully");
     } catch (error) {
       console.error("Error deleting client:", error);
+      notify.error("Failed to delete client: " + error.message);
       setError("Failed to delete client: " + error.message);
     }
   };
@@ -211,14 +225,16 @@ export function ClientList({ onPageChange }) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Button
-            variant="outline"
-            onClick={() => onPageChange("dashboard")}
-            className="border-border hover:bg-primary/5"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
-          </Button>
+          {JSON.parse(localStorage.getItem("user") || "{}").role !== "admin" && (
+            <Button
+              variant="outline"
+              onClick={() => onPageChange("dashboard")}
+              className="border-border hover:bg-primary/5"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+          )}
           <div>
             <h1 className="text-2xl font-bold text-foreground">
               Client Management
@@ -228,12 +244,14 @@ export function ClientList({ onPageChange }) {
             </p>
           </div>
         </div>
-        <Button
-          onClick={openCreateModal}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground"
-        >
-          <UserPlus className="mr-2 h-4 w-4" /> Add Client
-        </Button>
+        {JSON.parse(localStorage.getItem("user") || "{}").role !== "admin" && (
+          <Button
+            onClick={openCreateModal}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            <UserPlus className="mr-2 h-4 w-4" /> Add Client
+          </Button>
+        )}
       </div>
 
       {/* Stats */}
@@ -434,15 +452,21 @@ export function ClientList({ onPageChange }) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditModal(client)}>
-                            <Edit className="mr-2 h-4 w-4" /> Edit Client
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => onPageChange(`appointments/book?clientId=${client.id}`)}>
-                            <Calendar className="mr-2 h-4 w-4" /> Book Appointment
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDeleteClient(client.id)}>
-                            <Trash2 className="mr-2 h-4 w-4" /> Delete Client
-                          </DropdownMenuItem>
+                          {!isAdmin && (
+                            <DropdownMenuItem onClick={() => openEditModal(client)}>
+                              <Edit className="mr-2 h-4 w-4" /> Edit Client
+                            </DropdownMenuItem>
+                          )}
+                          {!isAdmin && (
+                            <DropdownMenuItem onClick={() => onPageChange(`appointments/book?clientId=${client.id}`)}>
+                              <Calendar className="mr-2 h-4 w-4" /> Book Appointment
+                            </DropdownMenuItem>
+                          )}
+                          {!isAdmin && (
+                            <DropdownMenuItem onClick={() => handleDeleteClient(client.id)}>
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete Client
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

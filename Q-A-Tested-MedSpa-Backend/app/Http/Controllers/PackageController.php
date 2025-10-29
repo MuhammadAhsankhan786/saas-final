@@ -47,9 +47,16 @@ class PackageController extends Controller
     public function myPackages()
     {
         $user = auth()->user();
+        
+        // Get client record for this user
+        $client = \App\Models\Client::where('user_id', $user->id)->first();
+        
+        if (!$client) {
+            return response()->json(['message' => 'Client profile not found'], 404);
+        }
 
         $packages = ClientPackage::with('package')
-            ->where('client_id', $user->id)
+            ->where('client_id', $client->id)
             ->get();
 
         return response()->json($packages);

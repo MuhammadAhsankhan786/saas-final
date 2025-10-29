@@ -12,6 +12,35 @@ use Illuminate\Support\Facades\Log;
 class AppointmentController extends Controller
 {
     /**
+     * Get form data for booking appointments (providers, services, locations, packages)
+     */
+    public function formData(Request $request)
+    {
+        $user = Auth::user();
+        
+        $data = [
+            'locations' => \App\Models\Location::select('id', 'name')->get(),
+            'providers' => \App\Models\User::where('role', 'provider')->select('id', 'name', 'email')->get(),
+            'services' => \App\Models\Service::select('id', 'name', 'price', 'duration')->get(),
+            'packages' => \App\Models\Package::select('id', 'name', 'price', 'duration')->get(),
+        ];
+        
+        // For client role, include their own client record
+        if ($user && $user->role === 'client') {
+            $client = Client::where('user_id', $user->id)->first();
+            if ($client) {
+                $data['client'] = [
+                    'id' => $client->id,
+                    'name' => $client->name,
+                    'email' => $client->email,
+                ];
+            }
+        }
+        
+        return response()->json($data);
+    }
+
+    /**
      * Display a listing of appointments with filters.
      */
     public function index(Request $request)
@@ -31,6 +60,9 @@ class AppointmentController extends Controller
             } else {
                 return response()->json(['message' => 'Client profile not found'], 404);
             }
+        } elseif ($user->role === 'provider') {
+            // Provider only sees their own appointments
+            $query->where('provider_id', $user->id);
         }
 
         // Apply filters
@@ -68,7 +100,62 @@ class AppointmentController extends Controller
     }
 
     /**
-     * Store a newly created appointment.
+     * Store a newly created appointment (by Reception staff).
+     */
+    public function storeAppointmentByStaff(Request $request)
+    {
+        $user = Auth::user();
+        
+        // Only reception can create appointments
+        if (!$user || $user->role !== 'reception') {
+            return response()->json(['message' => 'Unauthorized - Only reception staff can create appointments'], 401);
+        }
+        
+        $request->validate([
+            'client_id' => 'required|exists:clients,id',
+            'start_time' => 'required|date',
+            'end_time' => 'required|date|after:start_time',
+            'service_id' => 'nullable|exists:services,id',
+            'provider_id' => 'nullable|exists:users,id',
+            'package_id' => 'nullable|exists:packages,id',
+            'location_id' => 'required|exists:locations,id',
+            'status' => 'nullable|in:booked,confirmed,in-progress,completed,cancelled',
+            'notes' => 'nullable|string',
+        ]);
+
+        $appointment = Appointment::create([
+            'client_id' => $request->client_id,
+            'start_time' => $request->start_time,
+            'end_time' => $request->end_time,
+            'service_id' => $request->service_id,
+            'provider_id' => $request->provider_id,
+            'package_id' => $request->package_id,
+            'location_id' => $request->location_id,
+            'status' => $request->status ?? 'booked',
+            'notes' => $request->notes,
+        ]);
+
+        // Load relationships for notification
+        $appointment->load(['client', 'provider', 'location', 'service', 'package']);
+
+        // Send notification to provider if assigned
+        if ($appointment->provider_id && $appointment->provider) {
+            try {
+                $appointment->provider->notify(new AppointmentCreated($appointment));
+                Log::info("📨 SMS notification sent to provider: {$appointment->provider->name} for appointment #{$appointment->id}");
+            } catch (\Exception $e) {
+                Log::error("Failed to send notification: " . $e->getMessage());
+            }
+        }
+
+        return response()->json([
+            'message' => 'Appointment created successfully',
+            'appointment' => $appointment
+        ], 201);
+    }
+
+    /**
+     * Store a newly created appointment (by Client).
      */
     public function store(Request $request)
     {
@@ -76,6 +163,12 @@ class AppointmentController extends Controller
         $user = Auth::user();
         if (!$user || $user->role !== 'client') {
             return response()->json(['message' => 'Unauthorized'], 401);
+        }
+        
+        // Get the client record for this user
+        $client = Client::where('user_id', $user->id)->first();
+        if (!$client) {
+            return response()->json(['message' => 'Client profile not found. Please contact administrator.'], 404);
         }
         
         $request->validate([
@@ -89,6 +182,11 @@ class AppointmentController extends Controller
             'status' => 'nullable|in:booked,completed,canceled',
             'notes' => 'nullable|string',
         ]);
+        
+        // Ensure client can only create appointments for themselves
+        if ($request->client_id != $client->id) {
+            return response()->json(['message' => 'Unauthorized - Cannot create appointments for other clients'], 403);
+        }
 
         $appointment = Appointment::create([
             'client_id' => $request->client_id,
@@ -194,6 +292,11 @@ class AppointmentController extends Controller
                 return response()->json(['message' => 'Unauthorized'], 403);
             }
         }
+        
+        // Reception and Provider can update appointments (for scheduling)
+        if (!in_array($user->role, ['client', 'reception', 'provider'])) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
 
         $request->validate([
             'start_time' => 'nullable|date',
@@ -201,7 +304,7 @@ class AppointmentController extends Controller
             'service_id' => 'nullable|exists:services,id',
             'provider_id' => 'nullable|exists:users,id',
             'package_id' => 'nullable|exists:packages,id',
-            'status' => 'nullable|in:booked,completed,canceled',
+            'status' => 'nullable|in:booked,confirmed,in-progress,completed,cancelled',
             'notes' => 'nullable|string',
         ]);
 
@@ -223,9 +326,22 @@ class AppointmentController extends Controller
     {
         $user = Auth::user();
         
-        $request->validate([
-            'status' => 'required|in:booked,completed,canceled',
-        ]);
+        // Client can only update their own appointments
+        if ($user->role === 'client') {
+            $client = Client::where('user_id', $user->id)->first();
+            if (!$client || $appointment->client_id !== $client->id) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+            // Client can only cancel their appointments
+            $request->validate([
+                'status' => 'required|in:cancelled',
+            ]);
+        } else {
+            // Admin, reception, provider can update status
+            $request->validate([
+                'status' => 'required|in:booked,completed,cancelled',
+            ]);
+        }
 
         $oldStatus = $appointment->status;
         $appointment->update(['status' => $request->status]);
@@ -304,6 +420,12 @@ class AppointmentController extends Controller
             
             $appointment->delete();
             
+            return response()->json(['message' => 'Appointment deleted successfully']);
+        }
+        
+        // Reception can delete appointments
+        if ($user->role === 'reception') {
+            $appointment->delete();
             return response()->json(['message' => 'Appointment deleted successfully']);
         }
         

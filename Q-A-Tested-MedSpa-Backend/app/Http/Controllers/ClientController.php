@@ -15,7 +15,13 @@ class ClientController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Client::with(['clientUser', 'location', 'appointments', 'packages']);
+        $user = auth()->user();
+        $query = Client::with(['clientUser', 'location', 'appointments']);
+
+        // Provider only sees their own assigned clients
+        if ($user && $user->role === 'provider') {
+            $query->where('preferred_provider_id', $user->id);
+        }
 
         // Apply filters
         if ($request->has('location_id')) {
@@ -40,6 +46,13 @@ class ClientController extends Controller
      */
     public function store(Request $request)
     {
+        $user = auth()->user();
+        
+        // Only admin and reception can create clients
+        if (!$user || !in_array($user->role, ['admin', 'reception'])) {
+            return response()->json(['message' => 'Unauthorized - Only admins and reception can create clients'], 403);
+        }
+        
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:clients,email',
@@ -87,7 +100,7 @@ class ClientController extends Controller
      */
     public function show($id)
     {
-        $client = Client::with(['clientUser', 'location', 'appointments.provider', 'packages'])
+        $client = Client::with(['clientUser', 'location', 'appointments.provider'])
                         ->findOrFail($id);
         return response()->json($client);
     }
@@ -98,6 +111,12 @@ class ClientController extends Controller
     public function update(Request $request, $id)
     {
         $client = Client::findOrFail($id);
+        $user = auth()->user();
+        
+        // Only admin and reception can update clients
+        if (!$user || !in_array($user->role, ['admin', 'reception'])) {
+            return response()->json(['message' => 'Unauthorized - Only admins and reception can update clients'], 403);
+        }
 
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:255',
@@ -139,6 +158,13 @@ class ClientController extends Controller
      */
     public function destroy($id)
     {
+        $user = auth()->user();
+        
+        // Only admin and reception can delete clients
+        if (!$user || !in_array($user->role, ['admin', 'reception'])) {
+            return response()->json(['message' => 'Unauthorized - Only admins and reception can delete clients'], 403);
+        }
+        
         $client = Client::findOrFail($id);
         $client->delete();
 

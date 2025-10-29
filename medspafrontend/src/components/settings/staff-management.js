@@ -38,8 +38,11 @@ import {
   Check,
 } from "lucide-react";
 import { getUsers, createUser, updateUser, deleteUser, getLocations } from "@/lib/api";
+import { notify } from "@/lib/toast";
+import { useConfirm } from "../ui/confirm-dialog";
 
 export function StaffManagement({ onPageChange }) {
+  const { confirm, dialog } = useConfirm();
   const [staff, setStaff] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +50,9 @@ export function StaffManagement({ onPageChange }) {
 
   const [isAddingStaff, setIsAddingStaff] = useState(false);
   const [editingStaff, setEditingStaff] = useState(null);
+  
+  const role = JSON.parse(localStorage.getItem("user") || "{}").role;
+  const isAdmin = role === "admin";
 
   // Fetch staff data and locations from backend on component mount
   useEffect(() => {
@@ -207,26 +213,30 @@ export function StaffManagement({ onPageChange }) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Button
-            variant="outline"
-            onClick={() => onPageChange("dashboard")}
-            className="border-border hover:bg-primary/5"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
-          </Button>
+          {!isAdmin && (
+            <Button
+              variant="outline"
+              onClick={() => onPageChange("dashboard")}
+              className="border-border hover:bg-primary/5"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+          )}
           <div>
             <h1 className="text-2xl font-bold text-foreground">Staff Management</h1>
             <p className="text-muted-foreground">Manage your staff members and their permissions</p>
           </div>
         </div>
-        <Button
-          onClick={() => setIsAddingStaff(true)}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground"
-        >
-          <UserPlus className="mr-2 h-4 w-4" />
-          Add Staff Member
-        </Button>
+        {!isAdmin && (
+          <Button
+            onClick={() => setIsAddingStaff(true)}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            <UserPlus className="mr-2 h-4 w-4" />
+            Add Staff Member
+          </Button>
+        )}
       </div>
 
       {/* Error Display */}
@@ -260,24 +270,26 @@ export function StaffManagement({ onPageChange }) {
                       </Badge>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEditStaff(staffMember)}
-                      className="border-border hover:bg-primary/5"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteStaff(staffMember.id)}
-                      className="border-border hover:bg-destructive/5 hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  {!isAdmin && (
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditStaff(staffMember)}
+                        className="border-border hover:bg-primary/5"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteStaff(staffMember.id)}
+                        className="border-border hover:bg-destructive/5 hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">

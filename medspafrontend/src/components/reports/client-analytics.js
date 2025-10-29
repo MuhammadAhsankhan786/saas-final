@@ -54,70 +54,7 @@ import {
 } from "recharts";
 import { getClientRetentionReport } from "@/lib/api";
 
-// Mock client analytics data
-const clientGrowthData = [
-  { month: "Jan", newClients: 28, returningClients: 156, totalClients: 184 },
-  { month: "Feb", newClients: 24, returningClients: 142, totalClients: 166 },
-  { month: "Mar", newClients: 31, returningClients: 168, totalClients: 199 },
-  { month: "Apr", newClients: 35, returningClients: 185, totalClients: 220 },
-  { month: "May", newClients: 29, returningClients: 192, totalClients: 221 },
-  { month: "Jun", newClients: 42, returningClients: 198, totalClients: 240 },
-];
-
-const clientSegments = [
-  { segment: "VIP Clients", count: 15, revenue: 25000, percentage: 6.3 },
-  { segment: "Regular Clients", count: 120, revenue: 18000, percentage: 50.0 },
-  { segment: "New Clients", count: 85, revenue: 8500, percentage: 35.4 },
-  { segment: "Inactive Clients", count: 20, revenue: 0, percentage: 8.3 },
-];
-
-const topClients = [
-  {
-    id: "1",
-    name: "Emma Johnson",
-    email: "emma@example.com",
-    phone: "(555) 123-4567",
-    totalSpent: 2500,
-    appointments: 8,
-    lastVisit: "2025-12-21",
-    status: "active",
-    segment: "VIP",
-  },
-  {
-    id: "2",
-    name: "Sarah Davis",
-    email: "sarah@example.com",
-    phone: "(555) 234-5678",
-    totalSpent: 1800,
-    appointments: 6,
-    lastVisit: "2025-12-20",
-    status: "active",
-    segment: "Regular",
-  },
-  {
-    id: "3",
-    name: "Jessica Martinez",
-    email: "jessica@example.com",
-    phone: "(555) 345-6789",
-    totalSpent: 1200,
-    appointments: 4,
-    lastVisit: "2025-12-19",
-    status: "active",
-    segment: "Regular",
-  },
-  {
-    id: "4",
-    name: "Amanda Wilson",
-    email: "amanda@example.com",
-    phone: "(555) 456-7890",
-    totalSpent: 800,
-    appointments: 3,
-    lastVisit: "2025-12-15",
-    status: "new",
-    segment: "New",
-  },
-];
-
+// Chart colors
 const COLORS = ['#00A8E8', '#FF6B6B', '#4ECDC4', '#45B7D1'];
 
 export function ClientAnalytics({ onPageChange }) {

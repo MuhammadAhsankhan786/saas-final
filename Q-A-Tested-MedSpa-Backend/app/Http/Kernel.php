@@ -47,6 +47,7 @@ class Kernel extends HttpKernel
 
         // Role-based middleware
         'role' => \App\Http\Middleware\RoleMiddleware::class,
+        'admin.readonly' => \App\Http\Middleware\AdminReadOnlyMiddleware::class,
         
         // Security middleware
         'sensitive.timeout' => \App\Http\Middleware\SensitiveActionTimeout::class,

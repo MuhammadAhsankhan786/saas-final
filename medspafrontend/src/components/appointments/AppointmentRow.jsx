@@ -7,6 +7,7 @@ import {
   formatDateTime,
   isValidStatus
 } from "@/lib/api";
+import { notify } from "@/lib/toast";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import {
@@ -31,7 +32,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-const statusOptions = ["booked", "completed", "canceled"];
+const statusOptions = ["booked", "completed", "cancelled"];
 
 export function AppointmentRow({ 
   appointment, 
@@ -39,7 +40,8 @@ export function AppointmentRow({
   onEdit, 
   onDelete, 
   onStatusChange,
-  onRefresh 
+  onRefresh,
+  readOnly = false,
 }) {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -50,7 +52,7 @@ export function AppointmentRow({
         return <CheckCircle className="h-4 w-4 text-blue-500" />;
       case "completed":
         return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "canceled":
+      case "cancelled":
         return <XCircle className="h-4 w-4 text-red-500" />;
       default:
         return <AlertCircle className="h-4 w-4 text-gray-500" />;
@@ -63,7 +65,7 @@ export function AppointmentRow({
         return "default";
       case "completed":
         return "outline";
-      case "canceled":
+      case "cancelled":
         return "destructive";
       default:
         return "outline";
@@ -71,8 +73,9 @@ export function AppointmentRow({
   };
 
   const handleStatusChange = async (newStatus) => {
+    if (readOnly) return;
     if (!isValidStatus(newStatus)) {
-      alert("Invalid status selected");
+      notify.error("Invalid status selected");
       return;
     }
     
@@ -81,15 +84,17 @@ export function AppointmentRow({
       await updateAppointmentStatus(appointment.id, newStatus);
       onStatusChange?.(appointment.id, newStatus);
       onRefresh?.();
+      notify.success("Appointment status updated successfully");
     } catch (error) {
       console.error("Error updating appointment status:", error);
-      alert("Failed to update appointment status: " + error.message);
+      notify.error("Failed to update appointment status: " + error.message);
     } finally {
       setIsUpdatingStatus(false);
     }
   };
 
   const handleDelete = async () => {
+    if (readOnly) return;
     if (!confirm("Are you sure you want to delete this appointment?")) {
       return;
     }
@@ -99,9 +104,10 @@ export function AppointmentRow({
       await deleteAppointment(appointment.id);
       onDelete?.(appointment.id);
       onRefresh?.();
+      notify.success("Appointment deleted successfully");
     } catch (error) {
       console.error("Error deleting appointment:", error);
-      alert("Failed to delete appointment: " + error.message);
+      notify.error("Failed to delete appointment: " + error.message);
     } finally {
       setIsDeleting(false);
     }
@@ -176,7 +182,7 @@ export function AppointmentRow({
           <Select 
             value={appointment.status} 
             onValueChange={handleStatusChange}
-            disabled={isUpdatingStatus}
+            disabled={isUpdatingStatus || readOnly}
           >
             <SelectTrigger className="w-24 h-8 bg-input-background border-border">
               <SelectValue />
@@ -207,6 +213,7 @@ export function AppointmentRow({
           >
             <Eye className="h-4 w-4" />
           </Button>
+          {!readOnly && (
           <Button
             variant="outline"
             size="sm"
@@ -216,6 +223,8 @@ export function AppointmentRow({
           >
             <Edit className="h-4 w-4" />
           </Button>
+          )}
+          {!readOnly && (
           <Button
             variant="outline"
             size="sm"
@@ -226,6 +235,7 @@ export function AppointmentRow({
           >
             <Trash2 className="h-4 w-4" />
           </Button>
+          )}
         </div>
       </TableCell>
     </TableRow>

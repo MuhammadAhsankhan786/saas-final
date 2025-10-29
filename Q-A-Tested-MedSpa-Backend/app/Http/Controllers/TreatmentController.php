@@ -22,6 +22,9 @@ class TreatmentController extends Controller
             $query->whereHas('appointment', function ($q) use ($user) {
                 $q->where('client_id', $user->id);
             });
+        } elseif ($user->role === 'provider') {
+            // Provider only sees their own treatments
+            $query->where('provider_id', $user->id);
         }
 
         return response()->json($query->get(), 200);
@@ -85,6 +88,11 @@ class TreatmentController extends Controller
         if ($user->role === 'client' && $treatment->appointment->client_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
+        
+        // Provider can only see their own treatments
+        if ($user->role === 'provider' && $treatment->provider_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
 
         return response()->json($treatment, 200);
     }
@@ -99,6 +107,11 @@ class TreatmentController extends Controller
 
         // Client can only update their own treatments
         if ($user->role === 'client' && $treatment->appointment->client_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+        
+        // Provider can only update their own treatments
+        if ($user->role === 'provider' && $treatment->provider_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -141,6 +154,11 @@ class TreatmentController extends Controller
 
         // Client can only delete their own treatments
         if ($user->role === 'client' && $treatment->appointment->client_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+        
+        // Provider can only delete their own treatments
+        if ($user->role === 'provider' && $treatment->provider_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 

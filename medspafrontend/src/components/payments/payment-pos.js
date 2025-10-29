@@ -34,6 +34,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { getServices, getProducts, getClients, createPayment } from "@/lib/api";
+import { notify } from "@/lib/toast";
 
 export function PaymentPOS({ onPageChange }) {
   const [cart, setCart] = useState([]);
@@ -120,7 +121,7 @@ export function PaymentPOS({ onPageChange }) {
 
   const handleCheckout = async () => {
     if (!selectedClient || cart.length === 0) {
-      alert("Please select a client and add items to cart.");
+      notify.error("Please select a client and add items to cart.");
       return;
     }
 
@@ -149,7 +150,7 @@ export function PaymentPOS({ onPageChange }) {
 
       await createPayment(paymentData);
       
-      alert("Payment processed successfully!");
+      notify.success("Payment processed successfully!");
       setCart([]);
       setSelectedClient("");
       setDiscountType("none");
