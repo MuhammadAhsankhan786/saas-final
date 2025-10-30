@@ -1,0 +1,51 @@
+{
+  "role": "reception",
+  "allowedModules": [
+    "dashboard",
+    "appointments",
+    "clients",
+    "payments",
+    "packages",
+    "services"
+  ],
+  "restrictedModules": [
+    "treatments",
+    "inventory",
+    "reports",
+    "compliance",
+    "staff",
+    "business-settings",
+    "admin"
+  ],
+  "allowedEndpoints": [
+    "/staff/appointments",
+    "/staff/clients",
+    "/staff/payments",
+    "/staff/packages",
+    "/staff/packages/assign",
+    "/staff/products",
+    "/staff/services",
+    "/client/appointments/form-data"
+  ],
+  "blockedEndpoints": [
+    "/admin/*",
+    "/provider/*",
+    "/client/packages",
+    "/client/appointments",
+    "/client/payments"
+  ],
+  "allowedNavigationItems": [
+    "dashboard",
+    "appointments/list",
+    "appointments/book",
+    "appointments/calendar",
+    "clients/list",
+    "clients/add",
+    "payments/pos",
+    "payments/history",
+    "payments/packages",
+    "services/list",
+    "settings/profile"
+  ]
+}
+

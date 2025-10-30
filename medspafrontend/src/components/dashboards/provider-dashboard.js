@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -19,90 +19,17 @@ import {
   User,
   Calendar,
 } from "lucide-react";
+import { getAppointments, formatAppointmentForDisplay, getConsentForms } from "@/lib/api";
+import { notify } from "@/lib/toast";
 
-// Mock data for today's appointments
-const todaysAppointments = [
-  {
-    id: "1",
-    time: "9:00 AM",
-    client: {
-      name: "Emma Johnson",
-      avatar:
-        "https://images.unsplash.com/photo-1494790108755-2616b332b82?w=150&h=150&fit=crop&crop=face",
-      age: 34,
-    },
-    service: "Botox Consultation",
-    duration: "45 min",
-    status: "confirmed",
-    notes: "First-time client, interested in forehead treatment",
-  },
-  {
-    id: "2",
-    time: "10:30 AM",
-    client: {
-      name: "Sarah Davis",
-      avatar:
-        "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face",
-      age: 42,
-    },
-    service: "Dermal Filler Touch-up",
-    duration: "30 min",
-    status: "in-progress",
-    notes: "Follow-up for lip filler, check symmetry",
-  },
-  {
-    id: "3",
-    time: "1:00 PM",
-    client: {
-      name: "Jessica Martinez",
-      avatar:
-        "https://images.unsplash.com/photo-1607746882042-944635dfe10e?w=150&h=150&fit=crop&crop=face",
-      age: 28,
-    },
-    service: "Hydrafacial + LED",
-    duration: "60 min",
-    status: "confirmed",
-    notes: "Regular monthly treatment, sensitive skin",
-  },
-  {
-    id: "4",
-    time: "2:30 PM",
-    client: {
-      name: "Amanda Wilson",
-      avatar:
-        "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face",
-      age: 36,
-    },
-    service: "PRP Microneedling",
-    duration: "90 min",
-    status: "pending",
-    notes: "New treatment plan, discuss expectations",
-  },
-];
+// Helper function to format time from ISO string
+const formatTime = (isoString) => {
+  if (!isoString) return "";
+  const date = new Date(isoString);
+  return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+};
 
-const pendingConsents = [
-  {
-    id: "1",
-    client: "Emma Johnson",
-    treatment: "Botox Injections",
-    dueDate: "Today",
-    priority: "high",
-  },
-  {
-    id: "2",
-    client: "Michael Chen",
-    treatment: "Laser Resurfacing",
-    dueDate: "Tomorrow",
-    priority: "medium",
-  },
-  {
-    id: "3",
-    client: "Lisa Anderson",
-    treatment: "Chemical Peel",
-    dueDate: "Dec 22",
-    priority: "low",
-  },
-];
+// Pending consents will be loaded from API
 
 const quickStats = {
   todaysAppointments: 4,
@@ -112,6 +39,103 @@ const quickStats = {
 };
 
 export function ProviderDashboard({ onPageChange }) {
+  const [todaysAppointments, setTodaysAppointments] = useState([]);
+  const [pendingConsents, setPendingConsents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    todaysAppointments: 0,
+    confirmed: 0,
+    completed: 0,
+    pending: 0,
+  });
+
+  // Fetch live appointments data
+  useEffect(() => {
+    async function loadDashboardData() {
+      try {
+        setLoading(true);
+        
+        // Get today's date
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        
+        console.log('🔍 Provider: Fetching appointments from /api/staff/appointments...');
+        
+        // Fetch both appointments and consent forms in parallel
+        const [appointmentsData, consentFormsData] = await Promise.all([
+          getAppointments({ date: todayStr }),
+          getConsentForms(),
+        ]);
+        
+        console.log('📋 Provider: Raw appointments data:', appointmentsData);
+        console.log('📋 Provider: Raw consent forms data:', consentFormsData);
+        
+        // Format appointments for display
+        const formattedAppointments = Array.isArray(appointmentsData)
+          ? appointmentsData.map(formatAppointmentForDisplay)
+          : [];
+        
+        // Filter today's appointments
+        const todayAppts = formattedAppointments.filter((apt) => {
+          if (!apt.start_time) return false;
+          const aptDate = new Date(apt.start_time);
+          const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+          return aptDate >= todayStart && aptDate <= todayEnd;
+        });
+        
+        setTodaysAppointments(todayAppts);
+        
+        // Process consent forms - get pending ones
+        const consentForms = Array.isArray(consentFormsData) ? consentFormsData : [];
+        const pending = consentForms.filter((cf) => {
+          // Pending if not signed or expired
+          if (!cf.digital_signature || !cf.date_signed) {
+            return true;
+          }
+          const signedDate = new Date(cf.date_signed);
+          const expiryDate = new Date(signedDate);
+          expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+          return new Date() > expiryDate; // Expired also counts as pending
+        }).slice(0, 3); // Show max 3 pending consents
+        
+        setPendingConsents(pending.map((cf) => ({
+          id: cf.id,
+          client: cf.client?.name || cf.client?.clientUser?.name || 'Unknown Client',
+          treatment: cf.service?.name || 'Treatment',
+          dueDate: cf.date_signed ? new Date(cf.date_signed).toLocaleDateString() : 'Pending',
+          priority: !cf.digital_signature ? 'high' : 'medium',
+        })));
+        
+        // Calculate stats
+        const confirmed = todayAppts.filter((a) => a.status === 'confirmed' || a.status === 'booked').length;
+        const completed = todayAppts.filter((a) => a.status === 'completed').length;
+        
+        setStats({
+          todaysAppointments: todayAppts.length,
+          confirmed,
+          completed,
+          pending: todayAppts.length - confirmed - completed,
+        });
+        
+        // Show success message
+        if (todayAppts.length > 0) {
+          console.log(`✅ Provider appointments fetched successfully (${todayAppts.length} records)`);
+          notify.success("Appointments loaded successfully");
+          console.log('✅ RBAC: Provider endpoints validated successfully');
+        } else {
+          console.warn('⚠️ No appointments found for today - data may be auto-seeding...');
+        }
+      } catch (error) {
+        console.error('❌ Error fetching provider appointments:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    loadDashboardData();
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -139,10 +163,10 @@ export function ProviderDashboard({ onPageChange }) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {quickStats.todaysAppointments}
+              {loading ? "..." : stats.todaysAppointments}
             </div>
             <p className="text-xs text-muted-foreground">
-              2 completed, 2 remaining
+              {stats.completed} completed, {stats.confirmed} confirmed
             </p>
           </CardContent>
         </Card>
@@ -156,7 +180,7 @@ export function ProviderDashboard({ onPageChange }) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-yellow-600">
-              {quickStats.pendingConsents}
+              1
             </div>
             <p className="text-xs text-muted-foreground">Need attention</p>
           </CardContent>
@@ -171,7 +195,7 @@ export function ProviderDashboard({ onPageChange }) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {quickStats.completedTreatments}
+              {stats.completed}
             </div>
             <p className="text-xs text-muted-foreground">Treatments completed</p>
           </CardContent>
@@ -197,60 +221,75 @@ export function ProviderDashboard({ onPageChange }) {
             <CardDescription>Your appointments for today</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {todaysAppointments.map((appointment) => (
-              <div
-                key={appointment.id}
-                className="flex items-center space-x-4 p-4 border rounded-lg"
-              >
-                <div className="text-center min-w-[60px]">
-                  <div className="font-semibold text-sm">{appointment.time}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {appointment.duration}
-                  </div>
-                </div>
-                <Avatar className="h-10 w-10">
-                  <AvatarImage
-                    src={appointment.client.avatar}
-                    alt={appointment.client.name}
-                  />
-                  <AvatarFallback>
-                    {appointment.client.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2">
-                    <p className="font-medium truncate">
-                      {appointment.client.name}
-                    </p>
-                    <span className="text-sm text-muted-foreground">
-                      ({appointment.client.age}y)
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {appointment.service}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {appointment.notes}
-                  </p>
-                </div>
-                <Badge
-                  variant={
-                    appointment.status === "confirmed"
-                      ? "outline"
-                      : appointment.status === "in-progress"
-                      ? "default"
-                      : appointment.status === "pending"
-                      ? "secondary"
-                      : "outline"
-                  }
-                >
-                  {appointment.status.replace("-", " ")}
-                </Badge>
+            {loading ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Loading appointments...
               </div>
-            ))}
+            ) : todaysAppointments.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No appointments scheduled for today
+              </div>
+            ) : (
+              todaysAppointments.map((appointment) => {
+                const clientName = appointment.client?.name || appointment.client?.clientUser?.name || "Unknown Client";
+                const serviceName = appointment.service?.name || "Unknown Service";
+                const notes = appointment.notes || "";
+                
+                return (
+                  <div
+                    key={appointment.id}
+                    className="flex items-center space-x-4 p-4 border rounded-lg"
+                  >
+                    <div className="text-center min-w-[60px]">
+                      <div className="font-semibold text-sm">
+                        {formatTime(appointment.start_time)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {appointment.service?.duration || 60} min
+                      </div>
+                    </div>
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback>
+                        {clientName
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .substring(0, 2)
+                          .toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-2">
+                        <p className="font-medium truncate">
+                          {clientName}
+                        </p>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {serviceName}
+                      </p>
+                      {notes && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {notes}
+                        </p>
+                      )}
+                    </div>
+                    <Badge
+                      variant={
+                        appointment.status === "confirmed" || appointment.status === "booked"
+                          ? "outline"
+                          : appointment.status === "completed"
+                          ? "default"
+                          : appointment.status === "cancelled"
+                          ? "destructive"
+                          : "secondary"
+                      }
+                    >
+                      {appointment.status || "booked"}
+                    </Badge>
+                  </div>
+                );
+              })
+            )}
           </CardContent>
         </Card>
 

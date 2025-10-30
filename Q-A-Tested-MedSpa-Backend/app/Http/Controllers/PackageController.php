@@ -7,6 +7,8 @@ use App\Models\Client;
 use App\Models\ClientPackage;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf as PDF;
+use App\Http\Controllers\DatabaseSeederController;
+use Illuminate\Support\Facades\Log;
 
 class PackageController extends Controller
 {
@@ -15,8 +17,23 @@ class PackageController extends Controller
      */
     public function index()
     {
-        $packages = Package::all();
-        return response()->json($packages);
+        try {
+            $packages = Package::all();
+            
+            // If no data, check and seed all missing tables, then reload
+            if ($packages->isEmpty()) {
+                $seeded = DatabaseSeederController::seedMissingData();
+                if (in_array('packages', $seeded) || !Package::query()->exists()) {
+                    Log::info('No packages found; data seeded automatically...');
+                    $packages = Package::all();
+                }
+            }
+            
+            return response()->json($packages);
+        } catch (\Exception $e) {
+            Log::error('Package index failed', ['error' => $e->getMessage()]);
+            return response()->json([]);
+        }
     }
 
     /**
@@ -55,11 +72,26 @@ class PackageController extends Controller
             return response()->json(['message' => 'Client profile not found'], 404);
         }
 
-        $packages = ClientPackage::with('package')
+        $clientPackages = ClientPackage::with('package')
             ->where('client_id', $client->id)
             ->get();
 
-        return response()->json($packages);
+        // Flatten the response: merge package data with client_package metadata
+        $packages = $clientPackages->map(function($clientPackage) {
+            $package = $clientPackage->package;
+            if (!$package) {
+                return null;
+            }
+            
+            // Merge package data with client_package metadata
+            return array_merge($package->toArray(), [
+                'client_package_id' => $clientPackage->id,
+                'assigned_at' => $clientPackage->assigned_at,
+                'renewal_date' => $clientPackage->renewal_date ?? null,
+            ]);
+        })->filter(); // Remove any null entries
+
+        return response()->json($packages->values());
     }
 
     /**

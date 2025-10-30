@@ -6,6 +6,8 @@ use App\Models\Service;
 use App\Models\Package;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use App\Http\Controllers\DatabaseSeederController;
+use Illuminate\Support\Facades\Log;
 
 class ServiceController extends Controller
 {
@@ -34,6 +36,16 @@ class ServiceController extends Controller
         }
 
         $services = $query->get();
+        
+        // If no data, check and seed all missing tables, then reload
+        if ($services->isEmpty()) {
+            $seeded = DatabaseSeederController::seedMissingData();
+            if (in_array('services', $seeded) || !Service::query()->exists()) {
+                Log::info('No services found; data seeded automatically...');
+                $services = $query->get();
+            }
+        }
+        
         return response()->json($services);
     }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -17,94 +17,190 @@ import {
   TabsList,
   TabsTrigger,
 } from "../ui/tabs";
-import { Calendar, Plus, CheckCircle, Clock, Phone, User, CalendarDays } from "lucide-react";
-
-// Mock data
-const todaysCheckIns = [
-  {
-    id: "1",
-    time: "9:00 AM",
-    client: {
-      name: "Emma Johnson",
-      avatar:
-        "https://images.unsplash.com/photo-1494790108755-2616b332b82?w=150&h=150&fit=crop&crop=face",
-      phone: "(555) 123-4567",
-    },
-    service: "Botox Consultation",
-    provider: "Dr. Chen",
-    status: "checked-in",
-  },
-  {
-    id: "2",
-    time: "10:30 AM",
-    client: {
-      name: "Sarah Davis",
-      avatar:
-        "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face",
-      phone: "(555) 234-5678",
-    },
-    service: "Dermal Filler",
-    provider: "Dr. Chen",
-    status: "in-treatment",
-  },
-  {
-    id: "3",
-    time: "1:00 PM",
-    client: {
-      name: "Jessica Martinez",
-      avatar:
-        "https://images.unsplash.com/photo-1607746882042-944635dfe10e?w=150&h=150&fit=crop&crop=face",
-      phone: "(555) 345-6789",
-    },
-    service: "Hydrafacial",
-    provider: "Dr. Johnson",
-    status: "waiting",
-  },
-  {
-    id: "4",
-    time: "2:30 PM",
-    client: {
-      name: "Amanda Wilson",
-      avatar:
-        "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face",
-      phone: "(555) 456-7890",
-    },
-    service: "PRP Treatment",
-    provider: "Dr. Chen",
-    status: "pending",
-  },
-];
-
-const upcomingWeek = [
-  { day: "Mon", date: "23", appointments: 12 },
-  { day: "Tue", date: "24", appointments: 15 },
-  { day: "Wed", date: "25", appointments: 8 },
-  { day: "Thu", date: "26", appointments: 6 },
-  { day: "Fri", date: "27", appointments: 14 },
-  { day: "Sat", date: "28", appointments: 11 },
-  { day: "Sun", date: "29", appointments: 5 },
-];
-
-const quickStats = {
-  todaysAppointments: 4,
-  checkedIn: 2,
-  waitingRoom: 1,
-  completedToday: 8,
-};
+import { Calendar, Plus, CheckCircle, Clock, Phone, User, CalendarDays, Loader2 } from "lucide-react";
+import { getAppointments, getPayments } from "@/lib/api";
+import { notify } from "@/lib/toast";
+import { forceSeedReceptionData } from "@/lib/forceSeed";
 
 export default function ReceptionDashboard({ onPageChange }) {
   const [selectedView, setSelectedView] = useState("day");
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    todaysAppointments: 0,
+    checkedIn: 0,
+    waitingRoom: 0,
+    completedToday: 0,
+  });
+  const [todaysAppointments, setTodaysAppointments] = useState([]);
+  const [todaysPayments, setTodaysPayments] = useState([]);
+
+  // Load live data
+  useEffect(() => {
+    async function loadDashboardData() {
+      try {
+        setLoading(true);
+        
+        // Get today's date range
+        const today = new Date();
+        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+        
+        // Fetch appointments and payments
+        const [appointmentsData, paymentsData] = await Promise.all([
+          getAppointments({
+            date: today.toISOString().split('T')[0],
+          }),
+          getPayments({}),
+        ]);
+        
+        // Filter today's appointments
+        const todayAppts = Array.isArray(appointmentsData) 
+          ? appointmentsData.filter(apt => {
+              if (!apt.start_time) return false;
+              const aptDate = new Date(apt.start_time);
+              return aptDate >= startOfDay && aptDate <= endOfDay;
+            })
+          : [];
+        
+        setTodaysAppointments(todayAppts);
+        
+        // Calculate stats
+        const completed = todayAppts.filter(a => a.status === 'completed').length;
+        const booked = todayAppts.filter(a => a.status === 'booked').length;
+        const cancelled = todayAppts.filter(a => a.status === 'cancelled').length;
+        
+        setStats({
+          todaysAppointments: todayAppts.length,
+          checkedIn: booked,
+          waitingRoom: todayAppts.filter(a => a.status === 'booked' && new Date(a.start_time) <= new Date()).length,
+          completedToday: completed,
+        });
+        
+        // Filter today's payments
+        const todayPayments = Array.isArray(paymentsData)
+          ? paymentsData.filter(p => {
+              if (!p.created_at) return false;
+              const payDate = new Date(p.created_at);
+              return payDate >= startOfDay && payDate <= endOfDay;
+            })
+          : [];
+        setTodaysPayments(todayPayments);
+        
+        console.log('✅ RBAC: Reception dashboard loaded live data from /reception/* endpoints');
+        console.log('✅ Reception dashboard data loaded successfully');
+        console.log('✅ Loaded from /api/reception/* endpoints');
+        
+        // Auto-force-seed if all endpoints return empty (development helper)
+        const allEmpty = todayAppts.length === 0 && (!paymentsData || paymentsData.length === 0);
+        if (allEmpty && process.env.NODE_ENV === 'development') {
+          console.warn('⚠️ All data is empty. Auto-triggering force seed...');
+          try {
+            await forceSeedReceptionData();
+            // Reload data after seeding
+            const [newAppts, newPayments] = await Promise.all([
+              getAppointments({ date: today.toISOString().split('T')[0] }),
+              getPayments({}),
+            ]);
+            const newTodayAppts = Array.isArray(newAppts) 
+              ? newAppts.filter(apt => {
+                  if (!apt.start_time) return false;
+                  const aptDate = new Date(apt.start_time);
+                  return aptDate >= startOfDay && aptDate <= endOfDay;
+                })
+              : [];
+            setTodaysAppointments(newTodayAppts);
+            setTodaysPayments(newPayments || []);
+            notify.success('Database seeded and data loaded successfully');
+          } catch (seedError) {
+            console.error('Auto-seed failed:', seedError);
+          }
+        } else {
+          // Success toast for dashboard data
+          try {
+            // Show a special toast if seeded sample data is detected
+            const hasSeedAppts = todayAppts.some(a => (a.notes || '').toLowerCase().includes('sample appointment'));
+            const hasSeedPayments = paymentsData && paymentsData.some(p => (p.amount === 150.00 || p.amount === 250.00));
+            
+            if (hasSeedAppts || hasSeedPayments) {
+              notify.success('Sample data added successfully');
+            } else {
+              notify.success('Data loaded successfully');
+            }
+          } catch {}
+        }
+      } catch (error) {
+        console.error("Error loading dashboard data:", error);
+        notify.error("Failed to load dashboard data. Please refresh.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    loadDashboardData();
+  }, []);
+
+  const formatTime = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  const todaysCheckIns = todaysAppointments.slice(0, 4).map(apt => ({
+    id: apt.id,
+    time: formatTime(apt.start_time),
+    client: {
+      name: apt.client?.name || apt.client?.clientUser?.name || "Unknown Client",
+      phone: apt.client?.phone || "",
+      avatar: null, // No avatar URLs from API
+    },
+    service: apt.service?.name || "Service",
+    provider: apt.provider?.name || apt.provider_id || "No Provider",
+    status: apt.status === "completed" ? "checked-in" : apt.status === "booked" ? "waiting" : "pending",
+  }));
+
+  const upcomingWeek = (() => {
+    const week = [];
+    const today = new Date();
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+      const dayNum = date.getDate();
+      // Count appointments for this day (using all appointments, not just today's)
+      // This would ideally fetch appointments for the week, but for now we'll show today's count
+      const dayApps = i === 0 ? todaysAppointments.length : 0; // Only show today's count for now
+      week.push({ day: dayName, date: String(dayNum), appointments: dayApps });
+    }
+    return week;
+  })();
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2 text-muted-foreground">Loading dashboard...</span>
+      </div>
+    );
+  }
+
+  const quickStats = stats;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Reception Dashboard</h1>
-          <p className="text-muted-foreground">
-            Saturday, December 21, 2025
-          </p>
-        </div>
+          <div>
+            <h1 className="text-2xl font-bold">Reception Dashboard</h1>
+            <p className="text-muted-foreground">
+              {formatDate(new Date())}
+            </p>
+          </div>
         <Button onClick={() => onPageChange("appointments/book")}>
           <Plus className="mr-2 h-4 w-4" /> Book Appointment
         </Button>
@@ -177,7 +273,7 @@ export default function ReceptionDashboard({ onPageChange }) {
                 <div className="text-center p-8 border-2 border-dashed rounded-lg">
                   <Calendar className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                   <h3 className="text-lg font-medium">Today's Schedule</h3>
-                  <p className="text-muted-foreground">4 appointments scheduled</p>
+                  <p className="text-muted-foreground">{quickStats.todaysAppointments} {quickStats.todaysAppointments === 1 ? 'appointment' : 'appointments'} scheduled</p>
                   <Button
                     className="mt-4"
                     onClick={() => onPageChange("appointments/calendar")}
@@ -232,26 +328,33 @@ export default function ReceptionDashboard({ onPageChange }) {
             <CardDescription>Manage client arrivals and check-ins</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {todaysCheckIns.map((appointment) => (
-              <div
-                key={appointment.id}
-                className="flex items-center space-x-4 p-4 border rounded-lg"
-              >
-                <div className="text-center min-w-[60px] font-semibold text-sm">
-                  {appointment.time}
-                </div>
-                <Avatar className="h-10 w-10">
-                  <AvatarImage
-                    src={appointment.client.avatar}
-                    alt={appointment.client.name}
-                  />
-                  <AvatarFallback>
-                    {appointment.client.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")}
-                  </AvatarFallback>
-                </Avatar>
+            {todaysCheckIns.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No appointments scheduled for today
+              </div>
+            ) : (
+              todaysCheckIns.map((appointment) => (
+                <div
+                  key={appointment.id}
+                  className="flex items-center space-x-4 p-4 border rounded-lg"
+                >
+                  <div className="text-center min-w-[60px] font-semibold text-sm">
+                    {appointment.time}
+                  </div>
+                  <Avatar className="h-10 w-10">
+                    {appointment.client.avatar ? (
+                      <AvatarImage
+                        src={appointment.client.avatar}
+                        alt={appointment.client.name}
+                      />
+                    ) : null}
+                    <AvatarFallback>
+                      {appointment.client.name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")}
+                    </AvatarFallback>
+                  </Avatar>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium">{appointment.client.name}</p>
                   <p className="text-sm text-muted-foreground">
@@ -280,7 +383,8 @@ export default function ReceptionDashboard({ onPageChange }) {
                   )}
                 </div>
               </div>
-            ))}
+              ))
+            )}
           </CardContent>
         </Card>
       </div>

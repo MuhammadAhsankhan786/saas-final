@@ -9,7 +9,8 @@ class AdminReadOnlyMiddleware
 {
     /**
      * Handle an incoming request.
-     * Admin role is restricted to GET requests only (read-only access).
+     * Blocks all write operations (POST, PUT, PATCH, DELETE) for admin role.
+     * Only allows GET requests for view-only access.
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  \Closure  $next
@@ -17,15 +18,15 @@ class AdminReadOnlyMiddleware
      */
     public function handle(Request $request, Closure $next)
     {
-        $user = $request->user();
+        $user = auth()->user();
         
-        // Check if user is authenticated and is admin
+        // Only apply to authenticated admin users
         if ($user && $user->role === 'admin') {
-            // Allow only GET and HEAD requests for admin
-            if (!in_array($request->method(), ['GET', 'HEAD'])) {
+            // Allow only GET requests (read-only)
+            if (!in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'])) {
                 return response()->json([
-                    'message' => 'Forbidden: Admin role has read-only access',
-                    'error' => 'You do not have permission to modify data. Admin accounts are restricted to view-only operations.',
+                    'error' => 'Admins have view-only access.',
+                    'message' => 'Admin role is restricted to viewing data only. No modifications allowed.',
                 ], 403);
             }
         }
@@ -33,5 +34,3 @@ class AdminReadOnlyMiddleware
         return $next($request);
     }
 }
-
-

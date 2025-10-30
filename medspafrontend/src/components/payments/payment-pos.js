@@ -64,9 +64,13 @@ export function PaymentPOS({ onPageChange }) {
         setServices(servicesData || []);
         setProducts(productsData || []);
         setClients(clientsData || []);
+        // Log RBAC compliance
+        console.log('✅ RBAC: POS data loaded using role-based endpoints');
       } catch (err) {
         console.error("Error loading POS data:", err);
-        setError("Failed to load services, products, or clients.");
+        const errorMessage = err.message || "Failed to load services, products, or clients.";
+        setError(errorMessage);
+        notify.error("Failed to load POS data: " + errorMessage);
       } finally {
         setLoading(false);
       }
@@ -150,7 +154,7 @@ export function PaymentPOS({ onPageChange }) {
 
       await createPayment(paymentData);
       
-      notify.success("Payment processed successfully!");
+      notify.success("Payment recorded successfully");
       setCart([]);
       setSelectedClient("");
       setDiscountType("none");
@@ -158,7 +162,9 @@ export function PaymentPOS({ onPageChange }) {
       setTipAmount(0);
     } catch (err) {
       console.error("Error processing payment:", err);
-      setError(err.message || "Failed to process payment. Please try again.");
+      const errorMessage = err.message || "Failed to process payment. Please try again.";
+      setError(errorMessage);
+      notify.error("Transaction failed: " + errorMessage);
     } finally {
       setIsProcessing(false);
     }

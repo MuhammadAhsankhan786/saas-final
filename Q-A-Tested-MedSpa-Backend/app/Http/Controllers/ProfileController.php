@@ -36,7 +36,7 @@ class ProfileController extends Controller
             'date_of_birth' => $user->date_of_birth,
             'emergency_contact' => $user->emergency_contact,
             'emergency_phone' => $user->emergency_phone,
-            'profile_image' => $user->profile_image ? Storage::url($user->profile_image) : null,
+            'profile_image' => $user->profile_image ? url(Storage::url($user->profile_image)) : null,
             'notification_preferences' => $user->notification_preferences ?? [
                 'email' => true,
                 'sms' => true,
@@ -114,7 +114,7 @@ class ProfileController extends Controller
         return response()->json([
             'message' => 'Profile photo uploaded successfully',
             'profile_image' => $path,
-            'profile_image_url' => Storage::url($path)
+            'profile_image_url' => url(Storage::url($path))
         ]);
     }
 

@@ -56,7 +56,7 @@ import {
   createClient,
   updateClient,
   deleteClient,
-  getLocations,
+  getAppointmentFormData,
 } from "@/lib/api";
 
 export function ClientList({ onPageChange }) {
@@ -84,20 +84,32 @@ export function ClientList({ onPageChange }) {
     async function loadData() {
       try {
         setLoading(true);
-        const [clientsData, locationsData] = await Promise.all([
+        const [clientsData, formDataResponse] = await Promise.all([
           getClients(),
-          getLocations(),
+          getAppointmentFormData(), // use auth-safe endpoint to fetch locations list
         ]);
         
         // Ensure clients data is an array and filter out any invalid entries
         const validClients = Array.isArray(clientsData) 
           ? clientsData.filter(client => client && typeof client === 'object' && client.id)
           : [];
+        // Log missing relationships for debugging
+        validClients.forEach(c => {
+          if (!c.location && !c.location_id) {
+            console.warn("RBAC notice: client has no location relationship or location_id", { id: c.id, name: c.name });
+          }
+          if (!c.clientUser && !c.user_id) {
+            console.warn("RBAC notice: client has no linked user (clientUser)", { id: c.id, name: c.name });
+          }
+        });
+
         setClients(validClients);
-        setLocations(locationsData || []);
+        setLocations(formDataResponse?.locations || []);
+        try { notify.success("Client data loaded successfully"); } catch {}
       } catch (error) {
         console.error("Error loading data:", error);
         setError("Failed to load clients data");
+        try { notify.error("Live data fetch failed. Please refresh."); } catch {}
       } finally {
         setLoading(false);
       }
@@ -130,12 +142,15 @@ export function ClientList({ onPageChange }) {
 
     try {
       const newClient = await createClient(formData);
-      setClients([newClient.client, ...clients]);
+      setClients([newClient.client || newClient, ...clients]);
       setIsCreateOpen(false);
       setFormData({ name: "", email: "", phone: "", location_id: "" });
+      notify.success("Client saved successfully");
     } catch (error) {
       console.error("Error creating client:", error);
-      setError("Failed to create client: " + error.message);
+      const msg = "Failed to create client: " + (error.message || "Unknown error");
+      setError(msg);
+      notify.error(msg);
     }
   };
 
@@ -151,13 +166,16 @@ export function ClientList({ onPageChange }) {
     try {
       const updatedClient = await updateClient(selectedClient.id, formData);
       setClients(clients.map(client => 
-        client && client.id === selectedClient.id ? updatedClient.client : client
+        client && client.id === selectedClient.id ? (updatedClient.client || updatedClient) : client
       ));
       setIsEditOpen(false);
       setSelectedClient(null);
+      notify.success("Client saved successfully");
     } catch (error) {
       console.error("Error updating client:", error);
-      setError("Failed to update client: " + error.message);
+      const msg = "Error saving client: " + (error.message || "Unknown error");
+      setError(msg);
+      notify.error(msg);
     }
   };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Card, CardHeader, CardTitle, CardContent,
 } from "@/components/ui/card";
@@ -64,6 +64,7 @@ export default function AppointmentForm({ appointment = null, editingAppointment
   const [error, setError] = useState("");
 
   // Load data from API
+  const loadRetryRef = useRef(0);
   useEffect(() => {
     async function loadData() {
       try {
@@ -99,24 +100,30 @@ export default function AppointmentForm({ appointment = null, editingAppointment
             }));
           }
         } else {
-          // For admin/reception/staff - use standard admin endpoints
-          const [locationsData, usersData, servicesData, packagesData, clientsData] = await Promise.all([
-            getLocations(),
-            getUsers(),
-            getServices(),
-            getPackages(),
-            getClients(),
-          ]);
-          
-          setLocations(locationsData || []);
-          setUsers(usersData || []);
-          setServices(servicesData || []);
-          setPackages(packagesData || []);
+          // For reception/provider: reuse client form-data endpoint (auth-only) for providers, services, locations, packages
+          const formDataResponse = await getAppointmentFormData();
+          if (formDataResponse) {
+            setLocations(formDataResponse.locations || []);
+            setUsers(formDataResponse.providers || []);
+            setServices(formDataResponse.services || []);
+            setPackages(formDataResponse.packages || []);
+          }
+          // Load clients list via staff endpoint
+          const clientsData = await getClients();
           setClients(clientsData || []);
         }
       } catch (error) {
         console.error("Error loading data:", error);
         setError("Failed to load form data. Please refresh the page.");
+        try {
+          const { notify } = await import("@/lib/toast");
+          notify.error("Live data fetch failed. Retrying...");
+        } catch {}
+        // Simple retry once
+        if (loadRetryRef.current < 1) {
+          loadRetryRef.current += 1;
+          setTimeout(loadData, 700);
+        }
       }
     }
     loadData();

@@ -7,6 +7,8 @@ use App\Models\User;
 use App\Models\Location;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\DatabaseSeederController;
 
 class ClientController extends Controller
 {
@@ -15,30 +17,127 @@ class ClientController extends Controller
      */
     public function index(Request $request)
     {
-        $user = auth()->user();
-        $query = Client::with(['clientUser', 'location', 'appointments']);
+        try {
+            $user = auth()->user();
+            
+            if (!$user) {
+                return response()->json(['message' => 'Unauthorized'], 401);
+            }
+            
+            // Start with basic query - don't eager load relationships initially to avoid errors
+            $query = Client::query();
 
-        // Provider only sees their own assigned clients
-        if ($user && $user->role === 'provider') {
-            $query->where('preferred_provider_id', $user->id);
+            // Provider sees clients assigned to them OR clients that have appointments with them
+            if ($user->role === 'provider') {
+                $query->where(function($q) use ($user) {
+                    $q->where('preferred_provider_id', $user->id)
+                      ->orWhereHas('appointments', function($aptQuery) use ($user) {
+                          $aptQuery->where('provider_id', $user->id);
+                      });
+                });
+            }
+
+            // Apply filters
+            if ($request->has('location_id')) {
+                $query->where('location_id', $request->location_id);
+            }
+
+            if ($request->has('search')) {
+                $search = $request->search;
+                $query->where(function($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%")
+                      ->orWhere('phone', 'like', "%{$search}%");
+                });
+            }
+
+            // Get clients and safely load relationships
+            $clients = $query->get();
+            
+            // If no data, check and seed all missing tables, then reload
+            if ($clients->isEmpty()) {
+                $seeded = DatabaseSeederController::seedMissingData();
+                if (in_array('clients', $seeded) || !Client::query()->exists()) {
+                    Log::info('No clients found; data seeded automatically...');
+                    $clients = $query->get();
+                }
+            }
+            
+            // Manually build response array to avoid serialization issues
+            $result = [];
+            foreach ($clients as $client) {
+                try {
+                    $location = null;
+                    if ($client->location_id) {
+                        try {
+                            $loc = $client->location;
+                            if ($loc) {
+                                $location = ['id' => $loc->id, 'name' => $loc->name];
+                            }
+                        } catch (\Exception $e) {
+                            // Location relationship failed, skip it
+                        }
+                    }
+                    
+                    $clientUser = null;
+                    if ($client->user_id) {
+                        try {
+                            $user = $client->clientUser;
+                            if ($user) {
+                                $clientUser = ['id' => $user->id, 'name' => $user->name, 'email' => $user->email];
+                            }
+                        } catch (\Exception $e) {
+                            // User relationship failed, skip it
+                        }
+                    }
+                    
+                    $result[] = [
+                        'id' => $client->id,
+                        'name' => $client->name ?? '',
+                        'email' => $client->email ?? '',
+                        'phone' => $client->phone ?? '',
+                        'location_id' => $client->location_id,
+                        'user_id' => $client->user_id,
+                        'status' => $client->status ?? 'active',
+                        'created_at' => $client->created_at ? $client->created_at->toDateTimeString() : null,
+                        'updated_at' => $client->updated_at ? $client->updated_at->toDateTimeString() : null,
+                        'location' => $location,
+                        'clientUser' => $clientUser,
+                    ];
+                } catch (\Exception $e) {
+                    // If individual client processing fails, log and continue
+                    Log::warning('Failed to process client ' . ($client->id ?? 'unknown') . ': ' . $e->getMessage());
+                    // Still include basic client data even if relationships fail
+                    $result[] = [
+                        'id' => $client->id ?? null,
+                        'name' => $client->name ?? '',
+                        'email' => $client->email ?? '',
+                        'phone' => $client->phone ?? '',
+                        'location_id' => $client->location_id ?? null,
+                        'user_id' => $client->user_id ?? null,
+                        'status' => 'active',
+                        'created_at' => $client->created_at ? $client->created_at->toDateTimeString() : null,
+                        'updated_at' => $client->updated_at ? $client->updated_at->toDateTimeString() : null,
+                        'location' => null,
+                        'clientUser' => null,
+                    ];
+                }
+            }
+            
+            return response()->json($result);
+        } catch (\Exception $e) {
+            Log::error('ClientController@index error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'user_id' => auth()->id(),
+                'user_role' => auth()->user()?->role,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            return response()->json([
+                'message' => 'Error fetching clients: ' . $e->getMessage(),
+                'error' => config('app.debug') ? $e->getTraceAsString() : null
+            ], 500);
         }
-
-        // Apply filters
-        if ($request->has('location_id')) {
-            $query->where('location_id', $request->location_id);
-        }
-
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%");
-            });
-        }
-
-        $clients = $query->get();
-        return response()->json($clients);
     }
 
     /**

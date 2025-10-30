@@ -28,8 +28,9 @@ import {
 } from "lucide-react";
 import {
   createClient,
-  getLocations,
+  getAppointmentFormData,
 } from "@/lib/api";
+import { notify } from "@/lib/toast";
 
 export function AddClient({ onPageChange }) {
   const [formData, setFormData] = useState({
@@ -46,11 +47,12 @@ export function AddClient({ onPageChange }) {
   useEffect(() => {
     async function loadLocations() {
       try {
-        const locationsData = await getLocations();
-        setLocations(locationsData || []);
+        const formDataResponse = await getAppointmentFormData();
+        setLocations(formDataResponse?.locations || []);
       } catch (error) {
         console.error("Error loading locations:", error);
         setError("Failed to load locations");
+        notify.error("Live data fetch failed. Please refresh.");
       }
     }
     loadLocations();
@@ -74,11 +76,13 @@ export function AddClient({ onPageChange }) {
       const newClient = await createClient(formData);
       console.log("Client created successfully:", newClient);
       
-      alert("Client added successfully!");
+      notify.success("Client saved successfully");
       onPageChange("clients/list");
     } catch (error) {
       console.error("Error adding client:", error);
-      setError("Error adding client: " + error.message);
+      const errorMessage = "Error saving client: " + (error.message || "Unknown error");
+      setError(errorMessage);
+      notify.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }

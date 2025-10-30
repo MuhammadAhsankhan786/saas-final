@@ -57,8 +57,12 @@ import {
   assignPackageToClient,
   getClients,
 } from "@/lib/api";
+import { notify } from "@/lib/toast";
+import { useAuth } from "@/context/AuthContext";
 
 export function Packages({ onPageChange }) {
+  const { user } = useAuth();
+  const isClient = user?.role === "client";
   const [packages, setPackages] = useState([]);
   const [services, setServices] = useState([]);
   const [clients, setClients] = useState([]);
@@ -86,24 +90,44 @@ export function Packages({ onPageChange }) {
     async function loadData() {
       try {
         setLoading(true);
-        const [packagesData, servicesData, clientsData] = await Promise.all([
-          getPackages(),
-          getServices(),
-          getClients(),
-        ]);
+        setError("");
         
-        setPackages(packagesData || []);
-        setServices(servicesData || []);
-        setClients(clientsData || []);
+        // For clients, only load packages (their own assigned packages)
+        if (isClient) {
+          const packagesData = await getPackages();
+          setPackages(Array.isArray(packagesData) ? packagesData : []);
+          setServices([]);
+          setClients([]);
+        } else {
+          // For admin/staff, load all data
+          const [packagesData, servicesData, clientsData] = await Promise.all([
+            getPackages(),
+            getServices(),
+            getClients(),
+          ]);
+          
+          setPackages(Array.isArray(packagesData) ? packagesData : []);
+          setServices(Array.isArray(servicesData) ? servicesData : []);
+          setClients(Array.isArray(clientsData) ? clientsData : []);
+        }
       } catch (error) {
         console.error("Error loading data:", error);
-        setError("Failed to load packages data");
+        const errorMessage = error.message || "Failed to load packages data";
+        setError(errorMessage);
+        
+        // Handle 401 Unauthorized - show toast and potentially logout
+        if (errorMessage.includes("Unauthorized") || errorMessage.includes("401")) {
+          notify.error("Session expired. Please log in again.");
+          // AuthContext will handle logout on next navigation
+        } else {
+          notify.error("Failed to load packages: " + errorMessage);
+        }
       } finally {
         setLoading(false);
       }
     }
     loadData();
-  }, []);
+  }, [isClient]);
 
   const filteredPackages = packages.filter((pkg) => {
     if (!pkg) return false;
@@ -121,13 +145,23 @@ export function Packages({ onPageChange }) {
     e.preventDefault();
     setError("");
 
-    if (!formData.name || !formData.price) {
-      setError("Please fill in all required fields");
+    // Check permissions
+    if (isClient || user?.role === 'admin') {
+      notify.error("Access forbidden. You do not have permission to create packages.");
       return;
     }
 
+    if (!formData.name || !formData.price) {
+      setError("Please fill in all required fields");
+      notify.error("Please fill in all required fields");
+      return;
+    }
+
+    const toastId = notify.loading("Creating package...");
     try {
       const newPackage = await createPackage(formData);
+      notify.dismiss(toastId);
+      notify.success("Package created successfully");
       setPackages([newPackage, ...packages]);
       setIsCreatePackageOpen(false);
       setFormData({
@@ -139,7 +173,10 @@ export function Packages({ onPageChange }) {
       });
     } catch (error) {
       console.error("Error creating package:", error);
-      setError("Failed to create package: " + error.message);
+      notify.dismiss(toastId);
+      const errorMessage = error.message || "Failed to create package";
+      setError(errorMessage);
+      notify.error(errorMessage);
     }
   };
 
@@ -147,13 +184,23 @@ export function Packages({ onPageChange }) {
     e.preventDefault();
     setError("");
 
-    if (!formData.name || !formData.price) {
-      setError("Please fill in all required fields");
+    // Check permissions
+    if (isClient || user?.role === 'admin') {
+      notify.error("Access forbidden. You do not have permission to update packages.");
       return;
     }
 
+    if (!formData.name || !formData.price) {
+      setError("Please fill in all required fields");
+      notify.error("Please fill in all required fields");
+      return;
+    }
+
+    const toastId = notify.loading("Updating package...");
     try {
       const updatedPackage = await updatePackage(selectedPackage.id, formData);
+      notify.dismiss(toastId);
+      notify.success("Package updated successfully");
       setPackages(packages.map(pkg => 
         pkg.id === selectedPackage.id ? updatedPackage : pkg
       ));
@@ -161,21 +208,37 @@ export function Packages({ onPageChange }) {
       setSelectedPackage(null);
     } catch (error) {
       console.error("Error updating package:", error);
-      setError("Failed to update package: " + error.message);
+      notify.dismiss(toastId);
+      const errorMessage = error.message || "Failed to update package";
+      setError(errorMessage);
+      notify.error(errorMessage);
     }
   };
 
   const handleDeletePackage = async (packageId) => {
-    if (!confirm("Are you sure you want to delete this package?")) {
+    // Check if user is admin (read-only)
+    if (isClient || user?.role === 'admin') {
+      notify.error("Access forbidden. You do not have permission to delete packages.");
       return;
     }
 
+    const confirmed = window.confirm("Are you sure you want to delete this package? This action cannot be undone.");
+    if (!confirmed) {
+      return;
+    }
+
+    const toastId = notify.loading("Deleting package...");
     try {
       await deletePackage(packageId);
+      notify.dismiss(toastId);
+      notify.success("Package deleted successfully");
       setPackages(packages.filter(pkg => pkg.id !== packageId));
     } catch (error) {
       console.error("Error deleting package:", error);
-      setError("Failed to delete package: " + error.message);
+      notify.dismiss(toastId);
+      const errorMessage = error.message || "Failed to delete package";
+      setError(errorMessage);
+      notify.error(errorMessage);
     }
   };
 
@@ -183,19 +246,34 @@ export function Packages({ onPageChange }) {
     e.preventDefault();
     setError("");
 
-    if (!assignData.client_id || !assignData.package_id) {
-      setError("Please select both client and package");
+    // Check permissions
+    if (isClient || user?.role === 'admin') {
+      notify.error("Access forbidden. You do not have permission to assign packages.");
       return;
     }
 
+    if (!assignData.client_id || !assignData.package_id) {
+      setError("Please select both client and package");
+      notify.error("Please select both client and package");
+      return;
+    }
+
+    const toastId = notify.loading("Assigning package...");
     try {
       await assignPackageToClient(assignData.client_id, assignData.package_id);
-      alert("Package assigned successfully!");
+      notify.dismiss(toastId);
+      notify.success("Package assigned successfully");
       setIsAssignPackageOpen(false);
       setAssignData({ client_id: "", package_id: "" });
+      // Refresh package list to show updated assignments
+      const packagesData = await getPackages();
+      setPackages(Array.isArray(packagesData) ? packagesData : []);
     } catch (error) {
       console.error("Error assigning package:", error);
-      setError("Failed to assign package: " + error.message);
+      notify.dismiss(toastId);
+      const errorMessage = error.message || "Failed to assign package";
+      setError(errorMessage);
+      notify.error("Transaction failed: " + errorMessage);
     }
   };
 
@@ -230,7 +308,21 @@ export function Packages({ onPageChange }) {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/admin/packages/pdf`, {
+      // Use role-based endpoint - Reception shouldn't access PDF reports (admin-only feature)
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      let pdfUrl = "/admin/packages/pdf";
+      
+      if (user.role === 'admin') {
+        pdfUrl = "/admin/packages/pdf";
+      } else if (user.role === 'reception' || user.role === 'provider') {
+        // Reception doesn't have access to reports - restrict this feature
+        notify.error("Access denied. Report generation is only available for administrators.");
+        return;
+      }
+      
+      console.log(`✅ RBAC: Generating packages PDF for role ${user.role}`);
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}${pdfUrl}`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,

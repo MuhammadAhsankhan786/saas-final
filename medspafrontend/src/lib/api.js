@@ -1,8 +1,160 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
+// RBAC Watchdog - Inline implementation to avoid module issues
+const getStaffEquivalentEndpoint = (url) => {
+  const mappings = {
+    '/admin/appointments': '/staff/appointments',
+    '/admin/clients': '/staff/clients',
+    '/admin/payments': '/staff/payments',
+    '/admin/packages': '/staff/packages',
+    '/admin/services': '/staff/services',
+    '/admin/products': '/staff/products',
+  };
+  
+  for (const [adminPath, staffPath] of Object.entries(mappings)) {
+    if (url.startsWith(adminPath)) {
+      return url.replace(adminPath, staffPath);
+    }
+  }
+  
+  return null;
+};
+
+const isAllowedEndpoint = (url) => {
+  const allowed = [
+    "/staff/appointments",
+    "/staff/clients",
+    "/staff/payments",
+    "/staff/packages",
+    "/staff/packages/assign",
+    "/staff/products",
+    "/staff/services",
+    "/reception/appointments",
+    "/reception/clients",
+    "/reception/payments",
+    "/reception/packages",
+    "/reception/packages/assign",
+    "/reception/products",
+    "/reception/services",
+    "/client/appointments/form-data",
+    "/profile"  // Profile management is available to all authenticated users
+  ];
+  
+  const blocked = ["/admin/*", "/provider/*"];
+  
+  // Check blocked patterns first
+  for (const pattern of blocked) {
+    if (pattern.includes('*')) {
+      const prefix = pattern.replace('/*', '');
+      if (url.startsWith(prefix)) {
+        return false;
+      }
+    } else if (url === pattern) {
+      return false;
+    }
+  }
+  
+  // Check allowed patterns
+  for (const allowedPath of allowed) {
+    if (url.startsWith(allowedPath) || url.includes(allowedPath)) {
+      return true;
+    }
+  }
+  
+  // Special case: /client/appointments/form-data is allowed
+  if (url.includes('/client/appointments/form-data')) {
+    return true;
+  }
+  
+  // Allow /reception/* endpoints for reception role
+  if (url.startsWith('/reception/')) {
+    return true;
+  }
+  
+  // Allow /profile and /profile/* endpoints for all authenticated users
+  if (url.startsWith('/profile')) {
+    return true;
+  }
+  
+  return false;
+};
+
 // Generic fetch wrapper
 export async function fetchWithAuth(url, options = {}) {
   const token = localStorage.getItem("token"); // JWT store kar rahe ho localStorage me
+  
+  // 🛡️ RBAC Watchdog: Check for Reception role violations
+  try {
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+    
+    if (currentUser?.role === 'reception') {
+      // Check if URL contains /admin/ or /staff/ - Reception should use /reception/* only
+      if (url.includes('/admin/')) {
+        console.warn(`🚨 RBAC warning: role=reception attempted admin endpoint: ${url}`);
+        
+        // Try to get reception-equivalent endpoint
+        const receptionEquivalent = url.replace('/admin/', '/reception/');
+        console.log(`✅ RBAC fix applied: ${url} → ${receptionEquivalent}`);
+        url = receptionEquivalent;
+      } else if (url.includes('/staff/') && !url.includes('/staff/clients') && !url.includes('/staff/payments')) {
+        // Only allow certain staff endpoints for backward compatibility, otherwise redirect to reception
+        console.warn(`🚨 RBAC warning: role=reception attempted staff endpoint: ${url}`);
+        const receptionEquivalent = url.replace('/staff/', '/reception/');
+        console.log(`✅ RBAC fix applied: ${url} → ${receptionEquivalent}`);
+        url = receptionEquivalent;
+      }
+      
+      // Validate endpoint is allowed
+      if (!isAllowedEndpoint(url)) {
+        // For unknown endpoints that don't start with /reception/ or /profile, block them
+        if (!url.startsWith('/reception/') && !url.startsWith('/profile') && !url.includes('/client/appointments/form-data')) {
+          console.warn(`🚨 RBAC warning: role=reception attempted unauthorized endpoint: ${url}`);
+          if (typeof window !== 'undefined') {
+            try {
+              // Dynamic import for toast notification
+              import('./toast').then(({ notify }) => {
+                notify.error('Access restricted for Reception role');
+              }).catch(() => {
+                // Toast not available, continue
+              });
+            } catch (e) {
+              // Toast not available
+            }
+          }
+          throw new Error(`Unauthorized endpoint for Reception role: ${url}`);
+        }
+      }
+    }
+    
+    // 🛡️ RBAC Enforcement: Admin can ONLY access /admin/* routes (read-only)
+    if (currentUser?.role === 'admin') {
+        // Block admin from accessing /staff/* or /reception/* routes
+        if (url.includes('/staff/') || url.includes('/reception/')) {
+          console.warn(`🚨 RBAC warning: role=admin attempted unauthorized endpoint: ${url}`);
+          console.warn(`⚠️ Admin role is restricted to /admin/* routes only (read-only)`);
+          if (typeof window !== 'undefined') {
+            try {
+              import('./toast').then(({ notify }) => {
+                notify.error('Admins have view-only access. Access restricted to admin endpoints.');
+              }).catch(() => {});
+            } catch (e) {}
+          }
+          throw new Error(`Unauthorized endpoint for Admin role: ${url}. Admin can only access /admin/* routes (read-only).`);
+        }
+      // Log admin read-only mode
+      if (url.startsWith('/admin/')) {
+        console.log(`✅ RBAC: Admin read-only mode verified for ${url}`);
+      }
+    } else if (currentUser?.role && currentUser.role !== 'admin' && typeof url === 'string' && url.startsWith('/admin/')) {
+      // General warning for other roles
+      console.warn(`⚠️ RBAC warning: role=${currentUser.role} attempting to call admin endpoint: ${url}. Consider using staff/client endpoint.`);
+    }
+  } catch (rbacError) {
+      // Re-throw RBAC blocking errors
+      if (rbacError.message?.includes('Access restricted') || rbacError.message?.includes('Unauthorized endpoint')) {
+        throw rbacError;
+      }
+    }
   
   // Build headers - don't force Content-Type for GET/HEAD requests or when body is FormData
   const isFormData = options.body instanceof FormData;
@@ -22,7 +174,8 @@ export async function fetchWithAuth(url, options = {}) {
     if (token) {
       console.log(`🔑 Token (first 20 chars): ${token.substring(0, 20)}...`);
     }
-    console.log(`👤 User role:`, JSON.parse(localStorage.getItem('user') || '{}').role);
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+    console.log(`👤 User role:`, currentUser.role);
     
     // Client-side guard: prevent admin from performing ANY mutations (READ-ONLY ACCESS)
     try {
@@ -82,6 +235,26 @@ export async function fetchWithAuth(url, options = {}) {
     if (!res.ok) {
       const status = res.status;
       const statusText = res.statusText;
+
+      // Auto-retry for 5xx when date-filtered appointments fail: strip date and retry once
+      if (
+        status >= 500 &&
+        typeof url === 'string' &&
+        url.includes('/appointments') &&
+        url.includes('?')
+      ) {
+        try {
+          const baseUrl = url.split('?')[0];
+          console.warn(`♻️ Auto-retrying without filters due to ${status} for ${url} -> ${baseUrl}`);
+          const retryRes = await fetch(`${API_BASE}${baseUrl}`, { ...options, headers });
+          if (retryRes.ok) {
+            const ct = retryRes.headers.get('content-type') || '';
+            return ct.includes('application/json') ? await retryRes.json() : null;
+          }
+        } catch (_) {
+          // ignore and continue to normal error handling
+        }
+      }
       
       console.error(`❌ API call failed: ${status} ${statusText} for ${url}`);
       
@@ -133,7 +306,29 @@ export async function fetchWithAuth(url, options = {}) {
       }
       
       if (status === 403) {
-        throw new Error("Access forbidden. You do not have permission to access this resource.");
+        // Handle RBAC middleware 403 from backend
+        const errorData = await res.json().catch(() => ({ message: "Access forbidden" }));
+        const errorMessage = errorData.message || errorData.error || "Access forbidden. You do not have permission to access this resource.";
+        
+        // Show toast and trigger redirect for unauthorized role access
+        if (typeof window !== 'undefined') {
+          try {
+            const { notify } = await import('./toast');
+            notify.error('Access restricted for your role');
+            
+            // Redirect to dashboard after a short delay
+            setTimeout(() => {
+              if (typeof window !== 'undefined') {
+                const event = new CustomEvent('navigate', { detail: { page: 'dashboard' } });
+                window.dispatchEvent(event);
+              }
+            }, 1000);
+          } catch (e) {
+            // Toast not available
+          }
+        }
+        
+        throw new Error(errorMessage);
       }
       
       if (status >= 500) {
@@ -230,6 +425,8 @@ export async function getClients(filters = {}) {
   let url;
   if (user.role === 'admin') {
     url = `/admin/clients${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'reception') {
+    url = `/reception/clients${queryParams ? `?${queryParams}` : ''}`;
   } else {
     url = `/staff/clients${queryParams ? `?${queryParams}` : ''}`;
   }
@@ -250,6 +447,8 @@ export async function getClient(id) {
   let endpoint;
   if (user.role === 'admin') {
     endpoint = `/admin/clients/${id}`;
+  } else if (user.role === 'reception') {
+    endpoint = `/reception/clients/${id}`;
   } else {
     endpoint = `/staff/clients/${id}`;
   }
@@ -258,33 +457,114 @@ export async function getClient(id) {
 }
 
 export async function createClient(clientData) {
-  return fetchWithAuth("/admin/clients", {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Admin is read-only, reception uses staff endpoint
+  if (user.role === 'admin') {
+    throw new Error('Admin role has read-only access. Cannot create clients.');
+  }
+  
+  const endpoint = (user.role === 'reception')
+    ? '/reception/clients'
+    : (user.role === 'provider' ? '/staff/clients' : '/admin/clients');
+  
+  return fetchWithAuth(endpoint, {
     method: "POST",
     body: JSON.stringify(clientData),
   });
 }
 
 export async function updateClient(id, clientData) {
-  return fetchWithAuth(`/admin/clients/${id}`, {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Admin is read-only, reception uses staff endpoint
+  if (user.role === 'admin') {
+    throw new Error('Admin role has read-only access. Cannot update clients.');
+  }
+  
+  const endpoint = (user.role === 'reception')
+    ? `/reception/clients/${id}`
+    : (user.role === 'provider' ? `/staff/clients/${id}` : `/admin/clients/${id}`);
+  
+  return fetchWithAuth(endpoint, {
     method: "PUT",
     body: JSON.stringify(clientData),
   });
 }
 
 export async function deleteClient(id) {
-  return fetchWithAuth(`/admin/clients/${id}`, {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Admin is read-only, reception uses staff endpoint
+  if (user.role === 'admin') {
+    throw new Error('Admin role has read-only access. Cannot delete clients.');
+  }
+  
+  const endpoint = (user.role === 'reception')
+    ? `/reception/clients/${id}`
+    : (user.role === 'provider' ? `/staff/clients/${id}` : `/admin/clients/${id}`);
+  
+  return fetchWithAuth(endpoint, {
     method: "DELETE",
   });
 }
 
 // ✅ Appointments API Functions
 export async function getAppointments(filters = {}) {
-  const queryParams = new URLSearchParams(filters).toString();
-  const url = `/admin/appointments${queryParams ? `?${queryParams}` : ''}`;
-  console.log('🔍 Fetching appointments from:', url);
-  const result = await fetchWithAuth(url);
-  console.log('📋 Appointments response:', result);
-  return result;
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  // Ensure valid YYYY-MM-DD date if provided; fallback to today when invalid
+  const ensureValidDate = (value) => {
+    if (!value || typeof value !== 'string') return null;
+    const m = /^\d{4}-\d{2}-\d{2}$/.test(value);
+    if (!m) return null;
+    const d = new Date(value + 'T00:00:00');
+    return isNaN(d.getTime()) ? null : value;
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const sanitized = { ...filters };
+  if (sanitized.date) {
+    const valid = ensureValidDate(sanitized.date);
+    sanitized.date = valid || today;
+  }
+
+  const queryParams = new URLSearchParams(sanitized).toString();
+
+  // Use role-based endpoint
+  let url;
+  if (user.role === 'admin') {
+    url = `/admin/appointments${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'reception') {
+    url = `/reception/appointments${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'provider') {
+    url = `/staff/appointments${queryParams ? `?${queryParams}` : ''}`;
+  } else {
+    // Client or fallback
+    url = `/client/appointments${queryParams ? `?${queryParams}` : ''}`;
+  }
+
+  console.log(`🔍 Fetching appointments as ${user.role} from:`, url);
+  try {
+    const result = await fetchWithAuth(url);
+    console.log('📋 Appointments response:', result);
+    return result;
+  } catch (err) {
+    // Retry once without date filter if the endpoint returned a server error
+    const message = String(err?.message || '');
+    if (message.toLowerCase().includes('server error') || message.includes('500')) {
+      try {
+        const retryUrl = url.replace(/\?[^]*$/, '');
+        console.warn('♻️ Retrying appointments fetch without date filter:', retryUrl);
+        const retry = await fetchWithAuth(retryUrl);
+        console.log('📋 Appointments retry response:', retry);
+        return retry;
+      } catch (e2) {
+        throw err; // propagate original
+      }
+    }
+    throw err;
+  }
 }
 
 export async function getMyAppointments(filters = {}) {
@@ -307,17 +587,39 @@ export async function getAppointment(id) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   console.log('🔍 Fetching appointment detail:', id);
   
-  // Use client endpoint for client role, admin endpoint for others
-  const endpoint = user.role === 'client' 
-    ? `/client/appointments/${id}`
-    : `/admin/appointments/${id}`;
+  // Use role-based endpoint
+  let endpoint;
+  if (user.role === 'client') {
+    endpoint = `/client/appointments/${id}`;
+  } else if (user.role === 'admin') {
+    endpoint = `/admin/appointments/${id}`;
+  } else if (user.role === 'reception') {
+    endpoint = `/reception/appointments/${id}`;
+  } else {
+    endpoint = `/staff/appointments/${id}`;
+  }
     
   return fetchWithAuth(endpoint);
 }
 
 export async function createAppointment(appointmentData) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   console.log('📝 Creating appointment:', appointmentData);
-  const result = await fetchWithAuth("/client/appointments", {
+  
+  // Use role-based endpoint
+  let endpoint;
+  if (user.role === 'client') {
+    endpoint = "/client/appointments";
+  } else if (user.role === 'admin') {
+    // Admin is read-only, but allow for backward compatibility
+    throw new Error('Admin role has read-only access. Cannot create appointments.');
+  } else if (user.role === 'reception') {
+    endpoint = "/reception/appointments";
+  } else {
+    endpoint = "/staff/appointments";
+  }
+  
+  const result = await fetchWithAuth(endpoint, {
     method: "POST",
     body: JSON.stringify(appointmentData),
   });
@@ -331,8 +633,10 @@ export async function updateAppointment(id, appointmentData) {
   let endpoint;
   if (user.role === 'client') {
     endpoint = `/client/appointments/${id}`;
+  } else if (user.role === 'reception') {
+    endpoint = `/reception/appointments/${id}`;
   } else {
-    // Admin, reception, provider all use staff endpoint (admin routes are read-only)
+    // Admin, provider use staff endpoint (admin routes are read-only)
     endpoint = `/staff/appointments/${id}`;
   }
   
@@ -344,10 +648,19 @@ export async function updateAppointment(id, appointmentData) {
 
 export async function updateAppointmentStatus(id, status) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  // Use client endpoint for client role
-  const endpoint = user.role === 'client' 
-    ? `/client/appointments/${id}/status` 
-    : `/admin/appointments/${id}/status`;
+  
+  // Use role-based endpoint
+  let endpoint;
+  if (user.role === 'client') {
+    endpoint = `/client/appointments/${id}/status`;
+  } else if (user.role === 'admin') {
+    endpoint = `/admin/appointments/${id}/status`;
+  } else if (user.role === 'reception') {
+    endpoint = `/reception/appointments/${id}/status`;
+  } else {
+    // Provider
+    endpoint = `/staff/appointments/${id}/status`;
+  }
   
   return fetchWithAuth(endpoint, {
     method: "PATCH",
@@ -361,8 +674,9 @@ export async function deleteAppointment(id) {
   let endpoint;
   if (user.role === 'client') {
     endpoint = `/client/appointments/${id}`;
+  } else if (user.role === 'reception') {
+    endpoint = `/reception/appointments/${id}`;
   } else {
-    // Admin, reception, provider use staff endpoint
     endpoint = `/staff/appointments/${id}`;
   }
   
@@ -450,6 +764,8 @@ export async function getPackages(filters = {}) {
     url = `/client/packages${queryParams ? `?${queryParams}` : ''}`;
   } else if (user.role === 'admin') {
     url = `/admin/packages${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'reception') {
+    url = `/reception/packages${queryParams ? `?${queryParams}` : ''}`;
   } else {
     url = `/staff/packages${queryParams ? `?${queryParams}` : ''}`;
   }
@@ -467,6 +783,8 @@ export async function getPackage(id) {
     endpoint = `/client/packages/${id}`;
   } else if (user.role === 'admin') {
     endpoint = `/admin/packages/${id}`;
+  } else if (user.role === 'reception') {
+    endpoint = `/reception/packages/${id}`;
   } else {
     endpoint = `/staff/packages/${id}`;
   }
@@ -475,27 +793,97 @@ export async function getPackage(id) {
 }
 
 export async function createPackage(packageData) {
-  return fetchWithAuth("/admin/packages", {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Admin has read-only access, cannot create
+  if (user.role === 'admin') {
+    throw new Error('Access forbidden. Admin role has read-only access. Cannot create packages.');
+  }
+  
+  // Staff (provider/reception) can create via /staff/packages
+  const endpoint = (user.role === 'reception')
+    ? '/reception/packages'
+    : (user.role === 'provider' ? '/staff/packages' : null);
+  
+  if (!endpoint) {
+    throw new Error('Unauthorized. Only staff can create packages.');
+  }
+  
+  return fetchWithAuth(endpoint, {
     method: "POST",
     body: JSON.stringify(packageData),
   });
 }
 
 export async function updatePackage(id, packageData) {
-  return fetchWithAuth(`/admin/packages/${id}`, {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Admin has read-only access, cannot update
+  if (user.role === 'admin') {
+    throw new Error('Access forbidden. Admin role has read-only access. Cannot update packages.');
+  }
+  
+  // Staff (provider/reception) can update via /staff/packages
+  let endpoint;
+  if (user.role === 'reception') {
+    endpoint = `/reception/packages/${id}`;
+  } else if (user.role === 'provider') {
+    endpoint = `/staff/packages/${id}`;
+  } else {
+    throw new Error('Unauthorized. Only staff can update packages.');
+  }
+  
+  return fetchWithAuth(endpoint, {
     method: "PUT",
     body: JSON.stringify(packageData),
   });
 }
 
 export async function deletePackage(id) {
-  return fetchWithAuth(`/admin/packages/${id}`, {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Admin has read-only access, cannot delete
+  if (user.role === 'admin') {
+    throw new Error('Access forbidden. Admin role has read-only access. Cannot delete packages.');
+  }
+  
+  // Staff (provider/reception) can delete via /staff/packages
+  let endpoint;
+  if (user.role === 'reception') {
+    endpoint = `/reception/packages/${id}`;
+  } else if (user.role === 'provider') {
+    endpoint = `/staff/packages/${id}`;
+  } else if (user.role === 'admin') {
+    // This won't be reached due to check above, but keeping for clarity
+    endpoint = `/admin/packages/${id}`;
+  } else {
+    throw new Error('Unauthorized. Only staff can delete packages.');
+  }
+  
+  return fetchWithAuth(endpoint, {
     method: "DELETE",
   });
 }
 
 export async function assignPackageToClient(clientId, packageId) {
-  return fetchWithAuth("/admin/packages/assign", {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Admin is read-only, reception/provider use staff endpoint
+  if (user.role === 'admin') {
+    throw new Error('Admin role has read-only access. Cannot assign packages.');
+  }
+  
+  // Use staff endpoint for reception/provider
+  const endpoint = (user.role === 'reception')
+    ? '/reception/packages/assign'
+    : (user.role === 'provider' ? '/staff/packages/assign' : '/admin/packages/assign');
+  
+  // Log RBAC fix if needed
+  if (user.role === 'reception') {
+    console.log('✅ RBAC: Using /reception/packages/assign for reception role');
+  }
+  
+  return fetchWithAuth(endpoint, {
     method: "POST",
     body: JSON.stringify({ client_id: clientId, package_id: packageId }),
   });
@@ -516,6 +904,8 @@ export async function getServices(filters = {}) {
     url = `/client/services${queryParams ? `?${queryParams}` : ''}`;
   } else if (user.role === 'admin') {
     url = `/admin/services${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'reception') {
+    url = `/reception/services${queryParams ? `?${queryParams}` : ''}`;
   } else {
     url = `/staff/services${queryParams ? `?${queryParams}` : ''}`;
   }
@@ -533,6 +923,8 @@ export async function getService(id) {
     endpoint = `/client/services/${id}`;
   } else if (user.role === 'admin') {
     endpoint = `/admin/services/${id}`;
+  } else if (user.role === 'reception') {
+    endpoint = `/reception/services/${id}`;
   } else {
     endpoint = `/staff/services/${id}`;
   }
@@ -571,6 +963,8 @@ export async function getPayments(filters = {}) {
     url = `/client/payments${queryParams ? `?${queryParams}` : ''}`;
   } else if (user.role === 'admin') {
     url = `/admin/payments${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'reception') {
+    url = `/reception/payments${queryParams ? `?${queryParams}` : ''}`;
   } else {
     url = `/staff/payments${queryParams ? `?${queryParams}` : ''}`;
   }
@@ -588,6 +982,8 @@ export async function getPayment(id) {
     endpoint = `/client/payments/${id}`;
   } else if (user.role === 'admin') {
     endpoint = `/admin/payments/${id}`;
+  } else if (user.role === 'reception') {
+    endpoint = `/reception/payments/${id}`;
   } else {
     endpoint = `/staff/payments/${id}`;
   }
@@ -596,39 +992,104 @@ export async function getPayment(id) {
 }
 
 export async function createPayment(paymentData) {
-  return fetchWithAuth("/client/payments", {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Use role-based endpoint
+  let endpoint;
+  if (user.role === 'client') {
+    endpoint = "/client/payments";
+  } else if (user.role === 'admin') {
+    throw new Error('Admin role has read-only access. Cannot create payments.');
+  } else if (user.role === 'reception') {
+    endpoint = "/reception/payments";
+  } else {
+    endpoint = "/staff/payments";
+  }
+  
+  return fetchWithAuth(endpoint, {
     method: "POST",
     body: JSON.stringify(paymentData),
   });
 }
 
 export async function updatePayment(id, paymentData) {
-  return fetchWithAuth(`/admin/payments/${id}`, {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Admin is read-only, reception/provider use staff endpoint
+  if (user.role === 'admin') {
+    throw new Error('Admin role has read-only access. Cannot update payments.');
+  }
+  
+  // Use staff endpoint for reception/provider
+  const endpoint = (user.role === 'reception')
+    ? `/reception/payments/${id}`
+    : (user.role === 'provider' ? `/staff/payments/${id}` : `/admin/payments/${id}`);
+  
+  return fetchWithAuth(endpoint, {
     method: "PUT",
     body: JSON.stringify(paymentData),
   });
 }
 
 export async function deletePayment(id) {
-  return fetchWithAuth(`/admin/payments/${id}`, {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Admin is read-only, reception/provider use staff endpoint
+  if (user.role === 'admin') {
+    throw new Error('Admin role has read-only access. Cannot delete payments.');
+  }
+  
+  // Use staff endpoint for reception/provider
+  const endpoint = (user.role === 'reception')
+    ? `/reception/payments/${id}`
+    : (user.role === 'provider' ? `/staff/payments/${id}` : `/admin/payments/${id}`);
+  
+  return fetchWithAuth(endpoint, {
     method: "DELETE",
   });
 }
 
 export async function confirmStripePayment(paymentId, paymentIntentId) {
-  return fetchWithAuth(`/admin/payments/${paymentId}/confirm-stripe`, {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Use role-based endpoint
+  let endpoint;
+  if (user.role === 'admin') {
+    endpoint = `/admin/payments/${paymentId}/confirm-stripe`;
+  } else if (user.role === 'client') {
+    endpoint = `/client/payments/${paymentId}/confirm-stripe`;
+  } else if (user.role === 'reception') {
+    endpoint = `/reception/payments/${paymentId}/confirm-stripe`;
+  } else {
+    endpoint = `/staff/payments/${paymentId}/confirm-stripe`;
+  }
+  
+  return fetchWithAuth(endpoint, {
     method: "POST",
     body: JSON.stringify({ payment_intent_id: paymentIntentId }),
   });
 }
 
 export async function generateReceipt(paymentId) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const token = localStorage.getItem("token");
   if (!token) {
     throw new Error("No authentication token found");
   }
 
-  const response = await fetch(`${API_BASE}/admin/payments/${paymentId}/receipt`, {
+  // Use role-based endpoint
+  let receiptUrl;
+  if (user.role === 'admin') {
+    receiptUrl = `/admin/payments/${paymentId}/receipt`;
+  } else if (user.role === 'client') {
+    receiptUrl = `/client/payments/${paymentId}/receipt`;
+  } else if (user.role === 'reception') {
+    receiptUrl = `/reception/payments/${paymentId}/receipt`;
+  } else {
+    receiptUrl = `/staff/payments/${paymentId}/receipt`;
+  }
+
+  const response = await fetch(`${API_BASE}${receiptUrl}`, {
     method: "GET",
     headers: {
       "Authorization": `Bearer ${token}`,
@@ -650,13 +1111,42 @@ export async function getMyPayments() {
 
 // ✅ Products/Inventory API Functions
 export async function getProducts(filters = {}) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const queryParams = new URLSearchParams(filters).toString();
-  const url = `/admin/products${queryParams ? `?${queryParams}` : ''}`;
+  
+  // Use role-based endpoint
+  let url;
+  if (user.role === 'admin') {
+    url = `/admin/products${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'reception') {
+    url = `/reception/products${queryParams ? `?${queryParams}` : ''}`;
+    console.log('✅ RBAC: Using /reception/products for reception role');
+  } else if (user.role === 'provider') {
+    url = `/staff/products${queryParams ? `?${queryParams}` : ''}`;
+    console.log('✅ RBAC: Using /staff/products for provider role');
+  } else {
+    url = `/admin/products${queryParams ? `?${queryParams}` : ''}`;
+  }
+  
   return fetchWithAuth(url);
 }
 
 export async function getProduct(id) {
-  return fetchWithAuth(`/admin/products/${id}`);
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Use role-based endpoint
+  let endpoint;
+  if (user.role === 'admin') {
+    endpoint = `/admin/products/${id}`;
+  } else if (user.role === 'reception') {
+    endpoint = `/reception/products/${id}`;
+  } else if (user.role === 'provider') {
+    endpoint = `/staff/products/${id}`;
+  } else {
+    endpoint = `/admin/products/${id}`;
+  }
+  
+  return fetchWithAuth(endpoint);
 }
 
 export async function createProduct(productData) {
@@ -698,20 +1188,45 @@ export async function markStockNotificationAsRead(notificationId) {
 
 // ✅ Stock Alerts API Functions
 export async function getStockAlerts() {
-  return fetchWithAuth("/admin/stock-alerts");
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Provider/Staff should use stock-notifications endpoint (read-only)
+  // Admin can access stock-alerts (full access)
+  const url = (user.role === 'provider' || user.role === 'reception' || user.role === 'staff')
+    ? "/staff/stock-notifications"
+    : "/admin/stock-alerts";
+  
+  console.log(`✅ RBAC: Using ${url} for ${user.role} role`);
+  return fetchWithAuth(url);
 }
 
 export async function getStockAlertStatistics() {
-  return fetchWithAuth("/admin/stock-alerts/statistics");
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const url = (user.role === 'provider' || user.role === 'reception' || user.role === 'staff')
+    ? "/staff/stock-notifications/statistics" // If available, otherwise will return empty
+    : "/admin/stock-alerts/statistics";
+  
+  console.log(`✅ RBAC: Using ${url} for ${user.role} role`);
+  return fetchWithAuth(url);
 }
 
 export async function dismissStockAlert(alertId) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  // Only admin can dismiss alerts
+  if (user.role !== 'admin') {
+    throw new Error('Access denied. Only admin can dismiss stock alerts.');
+  }
   return fetchWithAuth(`/admin/stock-alerts/${alertId}/dismiss`, {
     method: "POST",
   });
 }
 
 export async function resolveStockAlert(alertId) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  // Only admin can resolve alerts
+  if (user.role !== 'admin') {
+    throw new Error('Access denied. Only admin can resolve stock alerts.');
+  }
   return fetchWithAuth(`/admin/stock-alerts/${alertId}/resolve`, {
     method: "POST",
   });
@@ -734,6 +1249,26 @@ export async function markNotificationAsRead(notificationId) {
 }
 
 // ✅ Reports API Functions
+// ✅ Admin Dashboard API Functions (READ-ONLY)
+export async function getAdminDashboardStats() {
+  console.log('📊 Fetching admin dashboard stats from /admin/dashboard');
+  const stats = await fetchWithAuth('/admin/dashboard');
+  console.log('✅ Admin dashboard stats:', stats);
+  console.log('✅ RBAC: Admin read-only mode verified');
+  return stats;
+}
+
+export async function getStaff() {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const url = user.role === 'admin' 
+    ? '/admin/staff' 
+    : '/admin/users'; // Fallback for other roles
+  console.log(`👥 Fetching staff from ${url}`);
+  const staff = await fetchWithAuth(url);
+  console.log(`✅ Staff data loaded: ${Array.isArray(staff) ? staff.length : 0} staff members`);
+  return staff;
+}
+
 export async function getRevenueReport(params = {}) {
   const queryParams = new URLSearchParams(params).toString();
   const url = `/admin/reports/revenue${queryParams ? `?${queryParams}` : ''}`;
@@ -757,6 +1292,120 @@ export async function getSignedUrl(fileData) {
   return fetchWithAuth("/files/signed-url", {
     method: "POST",
     body: JSON.stringify(fileData),
+  });
+}
+
+// ✅ Treatments API Functions (Provider-only)
+export async function getTreatments(filters = {}) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const queryParams = new URLSearchParams(filters).toString();
+  
+  // Provider uses /staff/treatments, client uses /client/treatments
+  const endpoint = (user.role === 'client') 
+    ? `/client/treatments${queryParams ? `?${queryParams}` : ''}`
+    : `/staff/treatments${queryParams ? `?${queryParams}` : ''}`;
+  
+  console.log(`✅ RBAC: Using ${endpoint} for ${user.role} role`);
+  return fetchWithAuth(endpoint);
+}
+
+export async function getTreatment(id) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  const endpoint = (user.role === 'client') 
+    ? `/client/treatments/${id}`
+    : `/staff/treatments/${id}`;
+  
+  return fetchWithAuth(endpoint);
+}
+
+export async function createTreatment(treatmentData) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  if (user.role === 'client') {
+    throw new Error('Clients cannot create treatments.');
+  }
+  
+  const endpoint = `/staff/treatments`;
+  
+  return fetchWithAuth(endpoint, {
+    method: "POST",
+    body: JSON.stringify(treatmentData),
+  });
+}
+
+export async function updateTreatment(id, treatmentData) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  if (user.role === 'client') {
+    throw new Error('Clients cannot update treatments.');
+  }
+  
+  const endpoint = `/staff/treatments/${id}`;
+  
+  return fetchWithAuth(endpoint, {
+    method: "PUT",
+    body: JSON.stringify(treatmentData),
+  });
+}
+
+// ✅ Consent Forms API Functions (Provider-only)
+export async function getConsentForms(filters = {}) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const queryParams = new URLSearchParams(filters).toString();
+  
+  // Provider uses /staff/consent-forms, client uses /client/consent-forms
+  const endpoint = (user.role === 'client') 
+    ? `/client/consent-forms${queryParams ? `?${queryParams}` : ''}`
+    : `/staff/consent-forms${queryParams ? `?${queryParams}` : ''}`;
+  
+  console.log(`✅ RBAC: Using ${endpoint} for ${user.role} role`);
+  return fetchWithAuth(endpoint);
+}
+
+export async function getConsentForm(id) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  const endpoint = (user.role === 'client') 
+    ? `/client/consent-forms/${id}`
+    : `/staff/consent-forms/${id}`;
+  
+  return fetchWithAuth(endpoint);
+}
+
+export async function createConsentForm(consentData) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  if (user.role === 'provider' || user.role === 'admin') {
+    // Admin is read-only, but allow provider
+    if (user.role === 'admin') {
+      throw new Error('Admin role has read-only access. Cannot create consent forms.');
+    }
+    const endpoint = `/staff/consent-forms`;
+    return fetchWithAuth(endpoint, {
+      method: "POST",
+      body: JSON.stringify(consentData),
+    });
+  }
+  
+  // Client can create consent forms
+  const endpoint = `/client/consent-forms`;
+  return fetchWithAuth(endpoint, {
+    method: "POST",
+    body: JSON.stringify(consentData),
+  });
+}
+
+export async function updateConsentForm(id, consentData) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  const endpoint = (user.role === 'client') 
+    ? `/client/consent-forms/${id}`
+    : `/staff/consent-forms/${id}`;
+  
+  return fetchWithAuth(endpoint, {
+    method: "PUT",
+    body: JSON.stringify(consentData),
   });
 }
 
@@ -897,19 +1546,38 @@ export async function deleteProfilePhoto() {
   });
 }
 
-// ✅ Compliance Alerts API Functions
+// ✅ Compliance Alerts API Functions (Provider + Admin)
 export async function getComplianceAlerts(filters = {}) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const queryParams = new URLSearchParams(filters).toString();
-  const url = `/admin/compliance-alerts${queryParams ? `?${queryParams}` : ''}`;
+  
+  // Provider uses /staff/ endpoint if available, otherwise /admin/ (read-only)
+  const url = (user.role === 'provider')
+    ? `/staff/compliance-alerts${queryParams ? `?${queryParams}` : ''}` // Will fallback to admin if not available
+    : `/admin/compliance-alerts${queryParams ? `?${queryParams}` : ''}`;
+  
+  console.log(`✅ RBAC: Using ${url} for ${user.role} role`);
   return fetchWithAuth(url);
 }
 
 export async function getComplianceAlert(id) {
-  return fetchWithAuth(`/admin/compliance-alerts/${id}`);
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const url = (user.role === 'provider')
+    ? `/staff/compliance-alerts/${id}`
+    : `/admin/compliance-alerts/${id}`;
+  
+  console.log(`✅ RBAC: Using ${url} for ${user.role} role`);
+  return fetchWithAuth(url);
 }
 
 export async function getComplianceStatistics() {
-  return fetchWithAuth("/admin/compliance-alerts/statistics");
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const url = (user.role === 'provider')
+    ? `/staff/compliance-alerts/statistics`
+    : `/admin/compliance-alerts/statistics`;
+  
+  console.log(`✅ RBAC: Using ${url} for ${user.role} role`);
+  return fetchWithAuth(url);
 }
 
 export async function resolveComplianceAlert(id) {

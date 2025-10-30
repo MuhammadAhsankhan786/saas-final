@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { getConsentForms, getAppointmentFormData } from "@/lib/api";
+import { notify } from "@/lib/toast";
 import {
   Card,
   CardContent,
@@ -49,90 +51,98 @@ import {
   Clock,
 } from "lucide-react";
 
-// Mock consent form data
-const consentForms = [
-  {
-    id: "1",
-    clientName: "Emma Johnson",
-    clientId: "client-1",
-    formType: "Botox Treatment",
-    status: "signed",
-    signedDate: "2025-12-20",
-    expiryDate: "2026-12-20",
-    provider: "Dr. Chen",
-    location: "Downtown Clinic",
-    notes: "Client understood all risks and benefits",
-    createdAt: "2025-12-20T10:30:00Z",
-  },
-  {
-    id: "2",
-    clientName: "Sarah Davis",
-    clientId: "client-2",
-    formType: "Dermal Filler",
-    status: "pending",
-    signedDate: null,
-    expiryDate: "2026-12-21",
-    provider: "Dr. Chen",
-    location: "Downtown Clinic",
-    notes: "Waiting for client signature",
-    createdAt: "2025-12-21T14:20:00Z",
-  },
-  {
-    id: "3",
-    clientName: "Jessica Martinez",
-    clientId: "client-3",
-    formType: "Hydrafacial Treatment",
-    status: "expired",
-    signedDate: "2024-12-15",
-    expiryDate: "2025-12-15",
-    provider: "Dr. Johnson",
-    location: "Westside Location",
-    notes: "Form expired, needs renewal",
-    createdAt: "2024-12-15T09:15:00Z",
-  },
-  {
-    id: "4",
-    clientName: "Amanda Wilson",
-    clientId: "client-4",
-    formType: "PRP Treatment",
-    status: "signed",
-    signedDate: "2025-12-18",
-    expiryDate: "2026-12-18",
-    provider: "Dr. Chen",
-    location: "Downtown Clinic",
-    notes: "All consent forms completed",
-    createdAt: "2025-12-18T16:45:00Z",
-  },
-];
-
-const formTypes = [
-  "Botox Treatment",
-  "Dermal Filler",
-  "Hydrafacial Treatment",
-  "PRP Treatment",
-  "Laser Hair Removal",
-  "Chemical Peel",
-  "Microneedling",
-  "CoolSculpting",
-  "General Consultation",
-];
-
 const statusOptions = ["All", "signed", "pending", "expired", "draft"];
 
 export function ConsentForms({ onPageChange }) {
+  const [consentForms, setConsentForms] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [selectedForm, setSelectedForm] = useState(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const [services, setServices] = useState([]);
+  const [clients, setClients] = useState([]);
   const [newForm, setNewForm] = useState({
-    clientName: "",
-    clientId: "",
-    formType: "",
-    provider: "",
-    location: "",
-    notes: "",
+    client_id: "",
+    service_id: "",
+    form_type: "consent",
   });
+
+  // Calculate status from API data
+  const calculateStatus = (consentForm) => {
+    if (!consentForm.digital_signature || !consentForm.date_signed) {
+      return "pending";
+    }
+    
+    // Calculate expiry date (1 year from signed date)
+    const signedDate = new Date(consentForm.date_signed);
+    const expiryDate = new Date(signedDate);
+    expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+    const today = new Date();
+    
+    if (today > expiryDate) {
+      return "expired";
+    }
+    
+    return "signed";
+  };
+
+  // Transform API data to component format
+  const transformConsentForm = (cf) => {
+    const status = calculateStatus(cf);
+    const signedDate = cf.date_signed ? new Date(cf.date_signed) : null;
+    const expiryDate = signedDate ? new Date(signedDate) : null;
+    if (expiryDate) {
+      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+    }
+
+    return {
+      id: cf.id,
+      clientName: cf.client?.name || cf.client?.clientUser?.name || "Unknown Client",
+      clientId: cf.client?.id || `client-${cf.client_id}`,
+      formType: cf.service?.name || cf.form_type || "General Consent",
+      status: status,
+      signedDate: signedDate ? signedDate.toISOString().split('T')[0] : null,
+      expiryDate: expiryDate ? expiryDate.toISOString().split('T')[0] : null,
+      provider: cf.client?.preferred_provider?.name || "Provider",
+      location: cf.client?.location?.name || "Location",
+      notes: cf.notes || "",
+      createdAt: cf.created_at,
+      rawData: cf, // Keep raw data for details
+    };
+  };
+
+  // Fetch real consent forms from API
+  useEffect(() => {
+    async function loadConsentForms() {
+      try {
+        setLoading(true);
+        const [consentData, formData] = await Promise.all([
+          getConsentForms(),
+          getAppointmentFormData(),
+        ]);
+
+        const forms = Array.isArray(consentData) 
+          ? consentData.map(transformConsentForm)
+          : [];
+        
+        setConsentForms(forms);
+        setServices(formData?.services || []);
+        setClients(formData?.clients || []);
+        
+        console.log(`✅ Consent forms fetched successfully (${forms.length} records)`);
+        notify.success("Consent forms loaded successfully");
+      } catch (error) {
+        console.error("Error loading consent forms:", error);
+        notify.error("Failed to load consent forms. Please refresh.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    loadConsentForms();
+  }, []);
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -165,10 +175,12 @@ export function ConsentForms({ onPageChange }) {
   };
 
   const filteredForms = consentForms.filter((form) => {
+    if (!form) return false;
+    
     const matchesSearch = 
-      form.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      form.formType.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      form.provider.toLowerCase().includes(searchQuery.toLowerCase());
+      (form.clientName && form.clientName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (form.formType && form.formType.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (form.provider && form.provider.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesStatus = statusFilter === "All" || form.status === statusFilter;
 
@@ -264,14 +276,14 @@ export function ConsentForms({ onPageChange }) {
               </div>
               <div>
                 <Label htmlFor="formType">Form Type</Label>
-                <Select value={newForm.formType} onValueChange={(value) => setNewForm(prev => ({ ...prev, formType: value }))}>
+                <Select value={newForm.service_id} onValueChange={(value) => setNewForm(prev => ({ ...prev, service_id: value }))}>
                   <SelectTrigger className="bg-input-background border-border">
-                    <SelectValue placeholder="Select form type" />
+                    <SelectValue placeholder="Select service" />
                   </SelectTrigger>
                   <SelectContent>
-                    {formTypes.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
+                    {services.map((service) => (
+                      <SelectItem key={service.id} value={service.id}>
+                        {service.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -375,20 +387,32 @@ export function ConsentForms({ onPageChange }) {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Form Type</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Signed Date</TableHead>
-                  <TableHead>Expiry Date</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredForms.map((form) => (
+            {loading ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">Loading consent forms...</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Form Type</TableHead>
+                    <TableHead>Provider</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Signed Date</TableHead>
+                    <TableHead>Expiry Date</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredForms.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                        No consent forms found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredForms.map((form) => (
                   <TableRow key={form.id}>
                     <TableCell>
                       <div className="font-medium text-foreground">{form.clientName}</div>
@@ -460,9 +484,11 @@ export function ConsentForms({ onPageChange }) {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -20,6 +20,25 @@ import { useAuth } from "../../context/AuthContext";
 import { Button } from "../ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 
+// Helper to get user avatar URL from user object (checks both avatar and profile_image)
+const getUserAvatarUrl = (user) => {
+  if (!user) return null;
+  const imagePath = user.avatar || user.profile_image;
+  if (!imagePath) return null;
+  
+  // If already absolute URL, return as-is
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath;
+  }
+  // Convert relative URL to absolute backend URL
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  // Remove /api from base URL if present, since storage is served from root
+  const baseUrl = apiBase.replace('/api', '');
+  // Ensure imagePath starts with / if it doesn't
+  const cleanPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+  return `${baseUrl}${cleanPath}`;
+};
+
 const navigationItems = [
   {
     id: "dashboard",
@@ -126,22 +145,36 @@ const navigationItems = [
     ],
   },
   {
+    id: "services",
+    label: "Services",
+    icon: Stethoscope,
+    roles: ["admin", "provider", "reception", "client"],
+    children: [
+      {
+        id: "services/list",
+        label: "All Services",
+        icon: Stethoscope,
+        roles: ["admin", "provider", "reception", "client"],
+      },
+    ],
+  },
+  {
     id: "inventory",
     label: "Inventory",
     icon: Package,
-    roles: ["admin", "provider", "reception"],
+    roles: ["admin", "provider"],
     children: [
       {
         id: "inventory/products",
         label: "Products",
         icon: Package,
-        roles: ["admin", "provider", "reception"],
+        roles: ["admin", "provider"],
       },
       {
         id: "inventory/alerts",
         label: "Stock Alerts",
         icon: Package,
-        roles: ["admin", "provider", "reception"],
+        roles: ["admin", "provider"],
       },
     ],
   },
@@ -255,8 +288,8 @@ export function Sidebar({ currentPage, onPageChange }) {
       "reports": new Set(["reports/revenue", "reports/clients", "reports/staff"]),
       // Compliance: Only audit log and alerts view (read-only)
       "compliance": new Set(["compliance/audit", "compliance/alerts"]),
-      // Settings: Only staff management view (no business settings)
-      "settings": new Set(["settings/profile", "settings/staff"]),
+      // Settings: Only profile view (no staff management, no business settings - read-only)
+      "settings": new Set(["settings/profile"]),
     };
 
     filteredNavItems = navigationItems
@@ -307,22 +340,22 @@ export function Sidebar({ currentPage, onPageChange }) {
       });
   }
 
-  // Reception role UI isolation
+  // Reception role UI isolation: Booking, Client Onboarding, Billing only
   if (user.role === "reception") {
     const allowedTopLevel = new Set([
       "dashboard",
       "appointments",
       "clients",
       "payments",
-      "inventory",
+      "services",
       "settings",
     ]);
 
     const allowedChildrenByParent = {
-      "appointments": new Set(["appointments/calendar", "appointments/list", "appointments/book"]),
+      "appointments": new Set(["appointments/list", "appointments/book"]), // Remove calendar - not needed
       "clients": new Set(["clients/list", "clients/add"]),
       "payments": new Set(["payments/pos", "payments/history", "payments/packages"]),
-      "inventory": new Set(["inventory/products", "inventory/alerts"]),
+      "services": new Set(["services/list"]),
       "settings": new Set(["settings/profile"]),
     };
 
@@ -419,7 +452,10 @@ export function Sidebar({ currentPage, onPageChange }) {
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center space-x-3">
           <Avatar>
-            <AvatarImage src={user.avatar} alt={user.name} />
+            <AvatarImage 
+              src={getUserAvatarUrl(user)} 
+              alt={user.name} 
+            />
             <AvatarFallback className="bg-primary/10 text-primary">
               {(user?.name || "")
                 .split(" ")

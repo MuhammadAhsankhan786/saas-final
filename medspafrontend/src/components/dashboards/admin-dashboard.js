@@ -34,7 +34,8 @@ import {
   getPayments, 
   getStockAlerts,
   getStockAlertStatistics,
-  getRevenueReport
+  getRevenueReport,
+  getAdminDashboardStats
 } from "@/lib/api";
 
 export function AdminDashboard({ onPageChange }) {
@@ -65,7 +66,11 @@ export function AdminDashboard({ onPageChange }) {
           return;
         }
         
-        // Fetch all data in parallel
+        // Fetch dashboard stats from dedicated endpoint (READ-ONLY)
+        console.log('📊 Admin: Fetching dashboard stats from /admin/dashboard...');
+        const dashboardStats = await getAdminDashboardStats();
+        
+        // Also fetch detailed data for charts
         const results = await Promise.allSettled([
           getAppointments(),
           getClients(),
@@ -83,11 +88,18 @@ export function AdminDashboard({ onPageChange }) {
         const stockStats = results[4].status === 'fulfilled' ? results[4].value : {};
         const revenueData = results[5].status === 'fulfilled' ? results[5].value : {};
 
-        // Calculate KPIs from live data
-        const totalRevenue = payments?.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) || 0;
-        const activeClientsCount = clients?.filter(c => c.status === 'active').length || clients?.length || 0;
-        const appointmentsCount = appointments?.length || 0;
-        const alertsCount = stockAlerts?.length || 0;
+        // Use dashboard stats for KPIs (live MySQL data)
+        const totalRevenue = dashboardStats?.revenue?.total || payments?.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) || 0;
+        const activeClientsCount = dashboardStats?.clients?.active || clients?.filter(c => c.status === 'active').length || clients?.length || 0;
+        const appointmentsCount = dashboardStats?.appointments?.total || appointments?.length || 0;
+        const alertsCount = dashboardStats?.inventory?.low_stock || stockAlerts?.length || 0;
+        
+        console.log('✅ Admin dashboard: Live data loaded from MySQL', {
+          revenue: totalRevenue,
+          clients: activeClientsCount,
+          appointments: appointmentsCount,
+          alerts: alertsCount
+        });
 
         // Calculate revenue change (mock for now - would need historical data)
         const revenueChange = "+12.5%";

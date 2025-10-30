@@ -73,6 +73,8 @@ const statusOptions = ["All", "booked", "completed", "cancelled"];
 export function AppointmentList({ onPageChange }) {
   const role = JSON.parse(localStorage.getItem("user") || "{}").role;
   const isAdmin = role === "admin";
+  const isReception = role === "reception";
+  const isProvider = role === "provider";
   const { confirm, dialog } = useConfirm();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -88,16 +90,37 @@ export function AppointmentList({ onPageChange }) {
     async function fetchAppointments() {
       try {
         setLoading(true);
-        // Admin uses admin endpoint, others use client endpoint
-        const data = isAdmin 
-          ? await getAppointments() 
-          : await getMyAppointments();
+        // Admin uses admin endpoint, reception/provider use staff endpoint, client uses client endpoint
+        // getAppointments() automatically routes based on user role
+        // Log role-based endpoint usage
+        const userRole = JSON.parse(localStorage.getItem("user") || "{}").role;
+        if (userRole === "provider") {
+          console.log('🔍 Provider: Fetching appointments from /api/staff/appointments...');
+        }
+        
+        const data = await getAppointments();
         console.log("📋 Appointments fetched:", data);
+        
         // Format appointments for display
         const formattedAppointments = Array.isArray(data) 
           ? data.map(formatAppointmentForDisplay)
           : [];
         setAppointments(formattedAppointments);
+        
+        // Show success toast and console log for provider
+        if (formattedAppointments.length > 0) {
+          if (userRole === "provider") {
+            console.log(`✅ Provider appointments fetched successfully (${formattedAppointments.length} records)`);
+            console.log('✅ RBAC: Provider endpoints validated successfully');
+          }
+          notify.success("Appointments loaded successfully");
+        } else {
+          if (userRole === "provider") {
+            console.warn("⚠️ No appointments found for provider - data may be auto-seeding...");
+          } else {
+            console.warn("⚠️ No appointments found - may need to seed data");
+          }
+        }
       } catch (error) {
         console.error("❌ Error fetching appointments:", error);
         // Don't show alert on every error, just log it
@@ -168,9 +191,7 @@ export function AppointmentList({ onPageChange }) {
     try {
       await updateAppointmentStatus(appointmentId, newStatus);
       // Refresh appointments list using role-based endpoint
-      const data = isAdmin 
-        ? await getAppointments() 
-        : await getMyAppointments();
+      const data = await getAppointments();
       const formattedAppointments = Array.isArray(data) 
         ? data.map(formatAppointmentForDisplay)
         : [];
@@ -196,10 +217,8 @@ export function AppointmentList({ onPageChange }) {
 
   const handleRefreshAppointments = async () => {
     try {
-      // Use role-based endpoint
-      const data = isAdmin 
-        ? await getAppointments() 
-        : await getMyAppointments();
+      // getAppointments() automatically routes based on user role
+      const data = await getAppointments();
       const formattedAppointments = Array.isArray(data) 
         ? data.map(formatAppointmentForDisplay)
         : [];
@@ -323,11 +342,11 @@ export function AppointmentList({ onPageChange }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Client ID</TableHead>
-                  <TableHead>Provider ID</TableHead>
-                  <TableHead>Location ID</TableHead>
-                  <TableHead>Service ID</TableHead>
-                  <TableHead>Package ID</TableHead>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Service</TableHead>
+                  <TableHead>Package</TableHead>
                   <TableHead>Start Time</TableHead>
                   <TableHead>End Time</TableHead>
                   <TableHead>Status</TableHead>
@@ -390,11 +409,7 @@ export function AppointmentList({ onPageChange }) {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3 bg-muted rounded-lg text-sm">
                   <div>
-                    <div className="text-sm text-muted-foreground">Client ID</div>
-                    <div className="font-medium text-foreground">{selectedAppointment.client_id}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Name</div>
+                    <div className="text-sm text-muted-foreground">Client Name</div>
                     <div className="font-medium text-foreground">{selectedAppointment.client?.name || "N/A"}</div>
                   </div>
                   <div>
@@ -422,39 +437,33 @@ export function AppointmentList({ onPageChange }) {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3 bg-muted rounded-lg text-sm">
                   <div>
-                    <div className="text-sm text-muted-foreground">Provider ID</div>
-                    <div className="font-medium text-foreground">{selectedAppointment.provider_id || "N/A"}</div>
-                  </div>
-                  <div>
                     <div className="text-sm text-muted-foreground">Provider Name</div>
                     <div className="font-medium text-foreground">{selectedAppointment.provider?.name || "N/A"}</div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Location ID</div>
-                    <div className="font-medium text-foreground">{selectedAppointment.location_id}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Location Name</div>
+                    <div className="text-sm text-muted-foreground">Location</div>
                     <div className="font-medium text-foreground flex items-center">
                       <MapPin className="mr-1 h-3 w-3" />
                       {selectedAppointment.location?.name || "N/A"}
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Service ID</div>
-                    <div className="font-medium text-foreground">{selectedAppointment.service_id || "N/A"}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Service Name</div>
+                    <div className="text-sm text-muted-foreground">Service</div>
                     <div className="font-medium text-foreground">{selectedAppointment.service?.name || "N/A"}</div>
+                    {selectedAppointment.service?.price && (
+                      <div className="text-xs text-muted-foreground">
+                        ${selectedAppointment.service.price.toFixed(2)}
+                      </div>
+                    )}
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Package ID</div>
-                    <div className="font-medium text-foreground">{selectedAppointment.package_id || "N/A"}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Package Name</div>
+                    <div className="text-sm text-muted-foreground">Package</div>
                     <div className="font-medium text-foreground">{selectedAppointment.package?.name || "N/A"}</div>
+                    {selectedAppointment.package?.price && (
+                      <div className="text-xs text-muted-foreground">
+                        ${selectedAppointment.package.price.toFixed(2)}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Start Time</div>

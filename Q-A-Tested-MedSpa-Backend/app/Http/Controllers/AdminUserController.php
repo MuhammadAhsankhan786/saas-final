@@ -11,12 +11,46 @@ use Illuminate\Support\Facades\Validator;
 class AdminUserController extends Controller
 {
     /**
-     * Display a listing of users.
+     * Display a listing of users/staff (READ-ONLY for admin)
+     * Returns safe JSON with no sensitive fields (passwords, tokens, etc.)
      */
     public function index()
     {
-        $users = User::with('location')->get();
-        return response()->json($users);
+        try {
+            // Get all users (staff includes provider, reception, staff roles)
+            $users = User::with('location')
+                ->whereIn('role', ['provider', 'reception', 'staff', 'admin'])
+                ->get()
+                ->map(function ($user) {
+                    return [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'role' => $user->role,
+                        'role_label' => ucfirst($user->role),
+                        'location_id' => $user->location_id,
+                        'location' => $user->location ? [
+                            'id' => $user->location->id,
+                            'name' => $user->location->name,
+                        ] : null,
+                        'first_name' => $user->first_name,
+                        'last_name' => $user->last_name,
+                        'title' => $user->title,
+                        'department' => $user->department,
+                        'created_at' => $user->created_at,
+                        'updated_at' => $user->updated_at,
+                        // Explicitly exclude: password, tokens, notes, sensitive data
+                    ];
+                });
+            
+            return response()->json($users);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Admin users index error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([]);
+        }
     }
 
     /**

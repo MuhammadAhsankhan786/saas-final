@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf as PDF;
+use App\Http\Controllers\DatabaseSeederController;
+use Illuminate\Support\Facades\Log;
 
 class ProductController extends Controller
 {
@@ -28,7 +30,18 @@ class ProductController extends Controller
             $query->whereRaw('current_stock <= low_stock_threshold');
         }
 
-        return response()->json($query->get());
+        $products = $query->get();
+        
+        // If no data, check and seed all missing tables, then reload
+        if ($products->isEmpty()) {
+            $seeded = DatabaseSeederController::seedMissingData();
+            if (in_array('products', $seeded) || !Product::query()->exists()) {
+                Log::info('No products found; data seeded automatically...');
+                $products = $query->get();
+            }
+        }
+        
+        return response()->json($products);
     }
 
     // Add new product

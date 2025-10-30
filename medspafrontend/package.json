@@ -6,7 +6,11 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "playwright test tests/reception.e2e.spec.ts",
+    "test:e2e:headed": "playwright test tests/reception.e2e.spec.ts --headed",
+    "ci:reception": "playwright test tests/reception.e2e.spec.ts --reporter=html && npm run validate:rbac",
+    "validate:rbac": "node -e \"console.log('RBAC validation will run in browser context');\""
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",

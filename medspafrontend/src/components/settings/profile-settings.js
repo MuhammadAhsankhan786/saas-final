@@ -37,6 +37,22 @@ import { getUserProfile, updateUserProfile, uploadProfilePhoto } from "@/lib/api
 import { notify } from "@/lib/toast";
 import { useAuth } from "@/context/AuthContext";
 
+// Helper to ensure profile images use absolute backend URLs
+const getProfileImageUrl = (imagePath) => {
+  if (!imagePath) return null;
+  // If already absolute URL, return as-is
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath;
+  }
+  // Convert relative URL to absolute backend URL
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  // Remove /api from base URL if present, since storage is served from root
+  const baseUrl = apiBase.replace('/api', '');
+  // Ensure imagePath starts with / if it doesn't
+  const cleanPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+  return `${baseUrl}${cleanPath}`;
+};
+
 export function ProfileSettings({ onPageChange }) {
   const { user } = useAuth();
   const isClient = user?.role === "client";
@@ -97,6 +113,10 @@ export function ProfileSettings({ onPageChange }) {
         console.log("👤 Current user:", user);
         
         const profile = await getUserProfile();
+        // Ensure profile image URL is absolute
+        if (profile.profile_image) {
+          profile.profile_image = getProfileImageUrl(profile.profile_image);
+        }
         setProfileData(profile);
       } catch (error) {
         console.error("❌ Error fetching profile:", error);
@@ -155,7 +175,7 @@ export function ProfileSettings({ onPageChange }) {
       const result = await uploadProfilePhoto(file);
       setProfileData(prev => ({ 
         ...prev, 
-        profile_image: result.profile_image_url 
+        profile_image: getProfileImageUrl(result.profile_image_url) 
       }));
       notify.dismiss(toastId);
       notify.success("Profile photo uploaded successfully!");

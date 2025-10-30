@@ -4,36 +4,58 @@ namespace App\Http\Controllers;
 
 use App\Models\StockAlert;
 use App\Models\Product;
+use App\Http\Controllers\DatabaseSeederController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class StockAlertController extends Controller
 {
     /**
-     * Get all stock alerts with auto-insertion of demo data if empty
+     * Get all stock alerts with auto-insertion of real database data if empty
      */
     public function index()
     {
+        // First ensure all base data exists (products, locations, etc.)
+        if (Product::count() === 0) {
+            \App\Http\Controllers\DatabaseSeederController::seedMissingData();
+        }
+
         // Check if stock_alerts table is empty
         if (StockAlert::count() === 0) {
             $this->insertDemoData();
         }
 
         // Get all active alerts with product relationship
-        $alerts = StockAlert::active()
-            ->with('product')
-            ->orderBy('priority', 'desc')
-            ->orderBy('created_at', 'desc')
-            ->get();
+        try {
+            $alerts = StockAlert::active()
+                ->with('product')
+                ->orderBy('priority', 'desc')
+                ->orderBy('created_at', 'desc')
+                ->get();
 
-        return response()->json($alerts);
+            return response()->json($alerts);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error fetching stock alerts', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            // Return empty array instead of crashing
+            return response()->json([]);
+        }
     }
 
     /**
-     * Insert demo stock alert data
+     * Insert real stock alert data from database products (not mock data)
      */
     private function insertDemoData()
     {
+        // Ensure products exist first
+        if (Product::count() === 0) {
+            DatabaseSeederController::seedMissingData();
+        }
+        
         // Get existing products to create alerts for
         $products = Product::take(5)->get();
         
