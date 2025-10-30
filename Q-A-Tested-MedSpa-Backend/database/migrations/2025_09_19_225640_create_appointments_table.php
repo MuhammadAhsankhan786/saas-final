@@ -9,9 +9,14 @@ return new class extends Migration {
     {
         Schema::create('appointments', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('client_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('staff_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('location_id')->constrained('locations')->onDelete('cascade');
+            // Define foreign key columns without constraints here to avoid
+            // dependency order issues; constraints added in a later migration
+            $table->unsignedBigInteger('client_id');
+            $table->unsignedBigInteger('staff_id');
+            $table->unsignedBigInteger('location_id');
+            $table->index(['client_id']);
+            $table->index(['staff_id']);
+            $table->index(['location_id']);
             $table->dateTime('appointment_time'); // full datetime (date + time)
             $table->enum('status', ['pending', 'approved', 'rejected', 'cancelled', 'scheduled'])->default('scheduled'); 
             $table->text('notes')->nullable();

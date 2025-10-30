@@ -15,9 +15,42 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        $liveData = (bool) env('MEDSPA_LIVE_DATA', false) || (bool) env('MEDSPA_DISABLE_DEMO_SEED', false);
+
+        if ($liveData) {
+            // Live-data mode: only ensure roles exist; do not insert demo/sample data
+            $this->call([
+                RoleSeeder::class,
+            ]);
+            return;
+        }
+
+        // Demo/data-rich mode: seed baseline demo data and accounts
+        $this->call([
+            RoleSeeder::class,
+            AdminDashboardSeeder::class,
+            ProviderSeeder::class,
+            ClientDataSeeder::class,
+            TestDataSeeder::class,
+            ComplianceAlertsTableSeeder::class,
         ]);
+
+        // Ensure the 4 demo users exist with password demo123
+        User::updateOrCreate(
+            ['email' => 'admin@medispa.com'],
+            ['name' => 'Admin User', 'password' => bcrypt('demo123'), 'role' => 'admin']
+        );
+        User::updateOrCreate(
+            ['email' => 'provider@medispa.com'],
+            ['name' => 'Provider User', 'password' => bcrypt('demo123'), 'role' => 'provider']
+        );
+        User::updateOrCreate(
+            ['email' => 'reception@medispa.com'],
+            ['name' => 'Reception User', 'password' => bcrypt('demo123'), 'role' => 'reception']
+        );
+        User::updateOrCreate(
+            ['email' => 'client@medispa.com'],
+            ['name' => 'Client User', 'password' => bcrypt('demo123'), 'role' => 'client']
+        );
     }
 }

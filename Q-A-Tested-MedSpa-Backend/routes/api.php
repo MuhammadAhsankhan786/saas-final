@@ -43,6 +43,7 @@ Route::post('stripe/webhook', [StripeWebhookController::class, 'handleWebhook'])
 Route::middleware('auth:api')->group(function () {
 
     // 🔹 Auth actions
+    // Explicit auth check route
     Route::get('me', [AuthController::class, 'me']);
     Route::post('logout', [AuthController::class, 'logout']);
     Route::post('refresh', [AuthController::class, 'refresh']);
@@ -62,7 +63,8 @@ Route::middleware('auth:api')->group(function () {
     | Admin routes - READ-ONLY ACCESS ONLY
     |--------------------------------------------------------------------------
     */
-    Route::middleware(['auth:api', 'admin.readonly'])->prefix('admin')->group(function () {
+    // Admin routes require admin role
+    Route::middleware(['auth:api', 'role:admin'])->prefix('admin')->group(function () {
         // 📊 Dashboard - Summary Statistics (View Only)
         Route::get('dashboard', [AdminDashboardController::class, 'getStats']);
         

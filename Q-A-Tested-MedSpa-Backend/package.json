@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "fix:jwt": "pwsh -File ./scripts/fix-jwt.ps1"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

@@ -9,18 +9,25 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('treatments', function (Blueprint $table) {
-   
-          
-       
-            $table->text('description')->nullable()->after('status');
-            $table->dateTime('treatment_date')->after('description');
+            // Add only if missing to avoid duplicate column errors in production
+            if (!Schema::hasColumn('treatments', 'description')) {
+                $table->text('description')->nullable()->after('status');
+            }
+            if (!Schema::hasColumn('treatments', 'treatment_date')) {
+                $table->dateTime('treatment_date')->after('description');
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('treatments', function (Blueprint $table) {
-            $table->dropColumn(['treatment_type', 'cost', 'status', 'description', 'treatment_date']);
+            if (Schema::hasColumn('treatments', 'treatment_date')) {
+                $table->dropColumn('treatment_date');
+            }
+            if (Schema::hasColumn('treatments', 'description')) {
+                $table->dropColumn('description');
+            }
         });
     }
 };

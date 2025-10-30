@@ -46,7 +46,15 @@ class AuthController extends Controller
     // 🔹 Current User
     public function me()
     {
-        return response()->json(auth('api')->user());
+        try {
+            return response()->json(auth('api')->user());
+        } catch (\PHPOpenSourceSaver\JWTAuth\Exceptions\TokenExpiredException $e) {
+            return response()->json(['error' => 'Token expired'], 401);
+        } catch (\PHPOpenSourceSaver\JWTAuth\Exceptions\TokenInvalidException $e) {
+            return response()->json(['error' => 'Token invalid'], 401);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
 
     // 🔹 Logout

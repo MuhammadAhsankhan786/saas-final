@@ -16,13 +16,13 @@ class TestDataSeeder extends Seeder
     {
         // 1️⃣ Ensure Provider & Client exist
         $provider = User::firstOrCreate(
-            ['email' => 'provider@example.com'],
-            ['name' => 'Test Provider', 'password' => bcrypt('password'), 'role' => 'provider']
+            ['email' => 'provider@medispa.com'],
+            ['name' => 'Test Provider', 'password' => bcrypt('demo123'), 'role' => 'provider']
         );
 
         $clientUser = User::firstOrCreate(
-            ['email' => 'client@example.com'],
-            ['name' => 'Test Client', 'password' => bcrypt('password'), 'role' => 'client']
+            ['email' => 'client@medispa.com'],
+            ['name' => 'Test Client', 'password' => bcrypt('demo123'), 'role' => 'client']
         );
 
         $client = Client::firstOrCreate(

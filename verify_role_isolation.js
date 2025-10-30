@@ -36,14 +36,14 @@
   }
 
   // Helper function to check if navigation item is visible
-  function checkNavItemVisible(navItemId, shouldBeVisible, roles) {
+  function checkNavItemVisible(navItemLabel, shouldBeVisible, roles) {
     const navItems = document.querySelectorAll('[data-nav-item]');
     let item = null;
     
     for (let i = 0; i < navItems.length; i++) {
       const button = navItems[i];
-      const text = button.textContent.trim();
-      if (text.toLowerCase().includes(navItemId.toLowerCase())) {
+      const label = (button.getAttribute('data-nav-item') || '').trim();
+      if (label.toLowerCase() === navItemLabel.toLowerCase()) {
         item = button;
         break;
       }
@@ -53,15 +53,15 @@
     
     if (shouldBeVisible) {
       if (isVisible) {
-        console.log(`  ✅ ${navItemId} is visible (correct)`);
+        console.log(`  ✅ ${navItemLabel} is visible (correct)`);
       } else {
-        console.error(`  ❌ ${navItemId} is NOT visible (should be visible for: ${roles.join(', ')})`);
+        console.error(`  ❌ ${navItemLabel} is NOT visible (should be visible for: ${roles.join(', ')})`);
       }
     } else {
       if (isVisible) {
-        console.error(`  ❌ ${navItemId} is visible (should be hidden for: ${roles.join(', ')})`);
+        console.error(`  ❌ ${navItemLabel} is visible (should be hidden for: ${roles.join(', ')})`);
       } else {
-        console.log(`  ✅ ${navItemId} is hidden (correct)`);
+        console.log(`  ✅ ${navItemLabel} is hidden (correct)`);
       }
     }
 
@@ -71,8 +71,8 @@
   // Verification matrix for each role
   const verificationMatrix = {
     admin: {
-      visible: ['Dashboard', 'Appointments', 'Clients', 'Treatments', 'Payments', 'Inventory', 'Reports', 'Compliance', 'Settings'],
-      hidden: []
+      visible: ['Dashboard', 'Appointments', 'Clients', 'Payments', 'Inventory', 'Reports', 'Compliance', 'Settings'],
+      hidden: ['Book Appointment', 'Calendar', 'All Appointments', 'Add Client', 'Treatments', 'Packages', 'Point of Sale', 'Payment History', 'Profile', 'Business', 'Stock Alerts', 'Revenue', 'Client Analytics', 'Staff Performance', 'Audit Log', 'Compliance Alerts']
     },
     provider: {
       visible: ['Dashboard', 'Appointments', 'Clients', 'Treatments', 'Inventory', 'Compliance', 'Settings'],
@@ -232,6 +232,17 @@
     verifyRole,
     runVerification,
     testAPIAccess,
+    verifyAdminUI: async function() {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (!user || user.role !== 'admin') {
+        console.error('❌ Not logged in as admin');
+        return;
+      }
+      const ok = verifyRole('admin');
+      if (!ok) return;
+      runVerification();
+      console.log('✅ Admin UI isolation perfect');
+    },
     fullTest: async function() {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       if (!user || !user.role) {

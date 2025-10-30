@@ -10,8 +10,11 @@ return new class extends Migration
     {
         Schema::create('treatment_products', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('treatment_id')->constrained()->onDelete('cascade');
-            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            // Defer FKs to ensure referenced tables exist
+            $table->unsignedBigInteger('treatment_id');
+            $table->unsignedBigInteger('product_id');
+            $table->index(['treatment_id']);
+            $table->index(['product_id']);
             $table->integer('quantity');
             $table->timestamps();
         });

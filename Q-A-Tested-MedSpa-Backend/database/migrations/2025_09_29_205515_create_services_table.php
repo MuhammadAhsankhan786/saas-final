@@ -19,8 +19,8 @@ return new class extends Migration
             $table->decimal('price', 10, 2)->default(0);
             $table->unsignedBigInteger('package_id')->nullable(); // Relation with packages
             $table->timestamps();
-
-            $table->foreign('package_id')->references('id')->on('packages')->onDelete('set null');
+            // Defer FK until packages table exists
+            $table->index(['package_id']);
         });
     }
 

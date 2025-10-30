@@ -17,18 +17,23 @@ class AdminDashboardSeeder extends Seeder
         // DB::table('products')->delete();
         
         // Get or create admin user
-        $admin = DB::table('users')->where('role', 'admin')->first();
-        if (!$admin) {
-            $adminId = DB::table('users')->insertGetId([
-                'name' => 'Admin User',
-                'email' => 'admin@example.com',
-                'password' => bcrypt('password'),
-                'role' => 'admin',
-                'created_at' => Carbon::now(),
-                'updated_at' => Carbon::now(),
-            ]);
+        // Ensure canonical admin account
+        $existingAdmin = DB::table('users')->where('email', 'admin@medispa.com')->first();
+        if ($existingAdmin) {
+            $adminId = $existingAdmin->id;
         } else {
-            $adminId = $admin->id;
+            $adminId = DB::table('users')->updateOrInsert(
+                ['email' => 'admin@medispa.com'],
+                [
+                    'name' => 'Admin User',
+                    'password' => bcrypt('demo123'),
+                    'role' => 'admin',
+                    'created_at' => Carbon::now(),
+                    'updated_at' => Carbon::now(),
+                ]
+            );
+            // updateOrInsert returns boolean in some DBs; re-read id
+            $adminId = DB::table('users')->where('email', 'admin@medispa.com')->value('id');
         }
 
         // Get or create location
@@ -39,8 +44,7 @@ class AdminDashboardSeeder extends Seeder
                 'address' => '123 Main St',
                 'city' => 'New York',
                 'state' => 'NY',
-                'zip_code' => '10001',
-                'phone' => '(555) 123-4567',
+                'zip' => '10001',
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
             ]);
@@ -90,15 +94,12 @@ class AdminDashboardSeeder extends Seeder
         // Create appointments
         for ($i = 1; $i <= 15; $i++) {
             $clientId = $clientUserIds[array_rand($clientUserIds)];
-            $startTime = Carbon::now()->addDays(rand(-30, 30))->setTime(rand(9, 17), rand(0, 59));
-            $endTime = $startTime->copy()->addHour();
+            $apptTime = Carbon::now()->addDays(rand(-30, 30))->setTime(rand(9, 17), rand(0, 59));
             
             DB::table('appointments')->insert([
                 'client_id' => $clientId,
                 'location_id' => $locationId,
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'status' => ['booked', 'confirmed', 'completed', 'cancelled'][rand(0, 3)],
+                'appointment_time' => $apptTime,
                 'notes' => "Appointment #$i notes",
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),

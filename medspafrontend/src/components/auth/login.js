@@ -8,11 +8,12 @@ import { Label } from "../ui/label";
 import { Alert, AlertDescription } from "../ui/alert";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, Eye, EyeOff } from "lucide-react";
 
 export function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const { login } = useAuth();
@@ -100,15 +101,26 @@ export function Login() {
                 <Label htmlFor="password" className="text-foreground">
                   Password
                 </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="bg-input-background border border-border focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="bg-input-background border border-border focus:ring-2 focus:ring-primary/20 focus:border-primary pr-10"
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               {error && (
@@ -151,9 +163,27 @@ export function Login() {
               <div
                 key={account.email}
                 className="p-3 border border-border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors hover:border-primary/30"
-                onClick={() => {
+                onClick={async () => {
+                  // Autofill and auto-login with demo credentials
                   setEmail(account.email);
                   setPassword("demo123");
+                  setError("");
+                  setIsLoading(true);
+                  try {
+                    // Primary attempt with demo123
+                    await login(account.email, "demo123");
+                    router.push('/');
+                  } catch (e1) {
+                    try {
+                      // Fallback some seeds use 'password'
+                      await login(account.email, "password");
+                      router.push('/');
+                    } catch (e2) {
+                      setError(e2.message || e1.message || "Login failed. Please try manually.");
+                    }
+                  } finally {
+                    setIsLoading(false);
+                  }
                 }}
               >
                 <div className="font-medium text-sm text-foreground">

@@ -11,11 +11,8 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             // ❌ role already exists in users table migration
             $table->unsignedBigInteger('location_id')->nullable()->after('role');
-
-            $table->foreign('location_id')
-                  ->references('id')
-                  ->on('locations')
-                  ->onDelete('set null');
+            // Defer foreign key to a separate migration after locations table exists
+            $table->index(['location_id']);
         });
     }
 

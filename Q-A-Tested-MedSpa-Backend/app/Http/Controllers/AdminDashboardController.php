@@ -22,18 +22,22 @@ class AdminDashboardController extends Controller
     public function getStats()
     {
         try {
-            // Auto-seed baseline data if tables are empty
-            $clientCount = Client::count();
-            $appointmentCount = Appointment::count();
-            $paymentCount = Payment::count();
-            $productCount = Product::count();
-            $staffCount = User::whereIn('role', ['provider', 'reception', 'staff'])->count();
-            $complianceCount = ComplianceAlert::count();
-            
-            if ($clientCount < 3 || $appointmentCount < 3 || $paymentCount < 2 || 
-                $productCount < 2 || $staffCount < 2 || $complianceCount < 1) {
-                DatabaseSeederController::seedMissingData(true);
-                Log::info('Admin dashboard: Auto-seeded baseline data');
+            // Live-data mode: skip auto-seeding when enabled
+            $liveData = (bool) env('MEDSPA_LIVE_DATA', false);
+            if (!$liveData) {
+                // Auto-seed baseline data if tables are empty
+                $clientCount = Client::count();
+                $appointmentCount = Appointment::count();
+                $paymentCount = Payment::count();
+                $productCount = Product::count();
+                $staffCount = User::whereIn('role', ['provider', 'reception', 'staff'])->count();
+                $complianceCount = ComplianceAlert::count();
+                
+                if ($clientCount < 3 || $appointmentCount < 3 || $paymentCount < 2 || 
+                    $productCount < 2 || $staffCount < 2 || $complianceCount < 1) {
+                    DatabaseSeederController::seedMissingData(true);
+                    Log::info('Admin dashboard: Auto-seeded baseline data');
+                }
             }
             
             // Calculate statistics from real database data
@@ -41,13 +45,12 @@ class AdminDashboardController extends Controller
             $tomorrow = $today->copy()->addDay();
             
             // Appointments stats
-            $todaysAppointments = Appointment::whereDate('start_time', $today)->count();
-            $upcomingAppointments = Appointment::where('start_time', '>=', $today)
-                ->where('start_time', '<', $tomorrow)
+            $todaysAppointments = Appointment::whereDate('appointment_time', $today)->count();
+            $upcomingAppointments = Appointment::where('appointment_time', '>=', $today)
+                ->where('appointment_time', '<', $tomorrow)
                 ->count();
             $totalAppointments = Appointment::count();
-            $confirmedAppointments = Appointment::where('status', 'confirmed')
-                ->orWhere('status', 'booked')
+            $confirmedAppointments = Appointment::whereIn('status', ['confirmed', 'booked'])
                 ->count();
             $completedAppointments = Appointment::where('status', 'completed')->count();
             
@@ -69,6 +72,7 @@ class AdminDashboardController extends Controller
             
             // Inventory stats
             $totalProducts = Product::count();
+            // Use schema column name for minimum threshold (minimum_stock)
             $lowStockProducts = Product::whereColumn('current_stock', '<=', 'minimum_stock')->count();
             $outOfStockProducts = Product::where('current_stock', 0)->count();
             

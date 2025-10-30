@@ -13,56 +13,25 @@ class ProviderSeeder extends Seeder
     {
         echo "🌱 Seeding providers...\n";
 
-        // Check if providers already exist
-        $existingProviders = DB::table('users')->where('role', 'provider')->count();
-        
-        if ($existingProviders > 0) {
-            echo "✅ Providers already exist ($existingProviders providers)\n";
-            return;
-        }
-
-        // Create 3 providers
+        // Ensure canonical provider account first
         $location = DB::table('locations')->first();
         $locationId = $location ? $location->id : 1;
 
-        $providers = [
-            [
-                'name' => 'Dr. Sarah Johnson',
-                'email' => 'provider1@example.com',
-                'password' => Hash::make('password'),
+        $canonical = DB::table('users')->where('email', 'provider@medispa.com')->first();
+        if (!$canonical) {
+            DB::table('users')->insert([
+                'name' => 'Test Provider',
+                'email' => 'provider@medispa.com',
+                'password' => Hash::make('demo123'),
                 'role' => 'provider',
                 'location_id' => $locationId,
                 'phone' => '+1234567890',
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
-            ],
-            [
-                'name' => 'Dr. Michael Chen',
-                'email' => 'provider2@example.com',
-                'password' => Hash::make('password'),
-                'role' => 'provider',
-                'location_id' => $locationId,
-                'phone' => '+1234567891',
-                'created_at' => Carbon::now(),
-                'updated_at' => Carbon::now(),
-            ],
-            [
-                'name' => 'Dr. Emily Davis',
-                'email' => 'provider3@example.com',
-                'password' => Hash::make('password'),
-                'role' => 'provider',
-                'location_id' => $locationId,
-                'phone' => '+1234567892',
-                'created_at' => Carbon::now(),
-                'updated_at' => Carbon::now(),
-            ],
-        ];
-
-        foreach ($providers as $provider) {
-            DB::table('users')->insert($provider);
+            ]);
         }
 
-        echo "✅ Created " . count($providers) . " providers\n";
+        echo "✅ Ensured provider@medispa.com (demo123)\n";
     }
 }
 
