@@ -43,6 +43,7 @@ const StaffPerformance = lazy(() => import("../components/reports/staff-performa
 const AuditLog = lazy(() => import("../components/compliance/audit-log").then(m => ({ default: m.AuditLog })));
 const ComplianceAlerts = lazy(() => import("../components/compliance/compliance-alerts").then(m => ({ default: m.ComplianceAlerts })));
 const PaymentHistory = lazy(() => import("../components/payments/payment-history").then(m => ({ default: m.PaymentHistory })));
+const Receipts = lazy(() => import("../components/payments/receipts").then(m => ({ default: m.Receipts })));
 
 // Loading fallback component
 const LoadingFallback = () => (
@@ -235,6 +236,14 @@ function AppContent() {
           <ProtectedRoute allowedRoles={["admin", "reception", "client"]}>
             <Suspense fallback={<LoadingFallback />}>
               <PaymentHistory onPageChange={handlePageChange} />
+            </Suspense>
+          </ProtectedRoute>
+        );
+      case "payments/receipts":
+        return (
+          <ProtectedRoute allowedRoles={["admin", "reception"]}>
+            <Suspense fallback={<LoadingFallback />}>
+              <Receipts onPageChange={handlePageChange} />
             </Suspense>
           </ProtectedRoute>
         );

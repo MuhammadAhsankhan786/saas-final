@@ -208,6 +208,10 @@ Route::middleware('auth:api')->group(function () {
         Route::get('payments/{payment}', [PaymentController::class, 'show']);
         Route::post('payments/{payment}/confirm-stripe', [PaymentController::class, 'confirmStripePayment']);
         Route::get('payments/{payment}/receipt', [PaymentController::class, 'generateReceipt']);
+        
+        // Test endpoints for debugging (remove in production)
+        Route::get('test-payment-status', [\App\Http\Controllers\TestPaymentController::class, 'getDatabaseStatus']);
+        Route::post('test-payment-save', [\App\Http\Controllers\TestPaymentController::class, 'testPaymentSave']);
 
         // Packages
         Route::apiResource('packages', PackageController::class)->only(['index','show','store','update','destroy']);

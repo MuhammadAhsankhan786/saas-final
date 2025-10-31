@@ -50,7 +50,7 @@ import {
 import { getPayments, generateReceipt } from "@/lib/api";
 
 const statusOptions = ["All", "completed", "pending", "refunded", "failed"];
-const paymentMethodOptions = ["All", "Credit Card", "Debit Card", "Cash", "Check", "Bank Transfer"];
+const paymentMethodOptions = ["All", "stripe", "cash"];
 
 export function PaymentHistory({ onPageChange }) {
   const [payments, setPayments] = useState([]);
@@ -62,24 +62,105 @@ export function PaymentHistory({ onPageChange }) {
   const [dateRange, setDateRange] = useState("All");
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0); // Force re-fetch
 
-  // Load payments from API
+  // Load payments from API - fetch live data
   useEffect(() => {
     async function loadPayments() {
       setLoading(true);
       setError(null);
       try {
-        const data = await getPayments();
-        setPayments(data || []);
+        console.log('🔄 Payment History - Fetching latest transactions...');
+        const response = await getPayments();
+        
+        console.log('📥 Payment History - Raw API response:', response);
+        console.log('📥 Response type:', typeof response);
+        console.log('📥 Is array?', Array.isArray(response));
+        
+        // Handle different response formats
+        let paymentsArray = [];
+        
+        if (Array.isArray(response)) {
+          paymentsArray = response;
+        } else if (response && Array.isArray(response.data)) {
+          paymentsArray = response.data;
+        } else if (response && response.data && typeof response.data === 'object') {
+          // If response.data is an object with pagination
+          paymentsArray = response.data.data || response.data.items || [];
+        } else if (response && response.payments && Array.isArray(response.payments)) {
+          paymentsArray = response.payments;
+        } else {
+          console.warn('⚠️ Unexpected response format:', response);
+          paymentsArray = [];
+        }
+        
+        console.log('✅ Payment History - Processed payments array:', paymentsArray.length, paymentsArray);
+        setPayments(paymentsArray);
+        
+        if (paymentsArray.length === 0) {
+          console.warn('⚠️ No payments found in Transaction History. Response was:', response);
+        } else {
+          console.log('✅ Successfully loaded', paymentsArray.length, 'payments');
+        }
       } catch (err) {
-        console.error("Error loading payments:", err);
-        setError("Failed to load payment history.");
+        console.error("❌ Error loading payments:", err);
+        console.error("Error details:", {
+          message: err.message,
+          stack: err.stack,
+          response: err.response
+        });
+        setError("Failed to load payment history: " + (err.message || "Unknown error"));
+        setPayments([]);
       } finally {
         setLoading(false);
       }
     }
     loadPayments();
+  }, [refreshKey]); // Re-fetch when refreshKey changes
+
+  // Refresh data when component mounts or page is navigated to
+  useEffect(() => {
+    console.log('🔄 Payment History - Component mounted/navigated, refreshing data...');
+    setRefreshKey(prev => prev + 1);
+  }, []); // Run once on mount
+
+  // Listen for payment completion events from POS
+  useEffect(() => {
+    const handlePaymentCompleted = (event) => {
+      const { paymentId, transactionId } = event.detail || {};
+      console.log('📢 Payment completed event received - refreshing history...', {
+        paymentId,
+        transactionId
+      });
+      // Longer delay to ensure backend has saved the payment and relationships
+      setTimeout(() => {
+        console.log('🔄 Refreshing payment history after payment completion...');
+        setRefreshKey(prev => prev + 1);
+      }, 2000); // 2 second delay
+    };
+
+    // Listen for custom payment completion event
+    window.addEventListener('paymentCompleted', handlePaymentCompleted);
+    
+    // Also check for focus events (when user returns to this page)
+    const handleFocus = () => {
+      console.log('🔄 Window focused - checking for new payments...');
+      setRefreshKey(prev => prev + 1);
+    };
+    
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('paymentCompleted', handlePaymentCompleted);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
+
+  // Function to manually refresh payments
+  const refreshPayments = () => {
+    console.log('🔄 Manually refreshing payment history...');
+    setRefreshKey(prev => prev + 1);
+  };
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -123,7 +204,9 @@ export function PaymentHistory({ onPageChange }) {
       providerName.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesStatus = statusFilter === "All" || payment.status === statusFilter;
-    const matchesMethod = methodFilter === "All" || payment.payment_method === methodFilter;
+    const matchesMethod = methodFilter === "All" || 
+      (methodFilter === "stripe" && payment.payment_method === "stripe") ||
+      (methodFilter === "cash" && payment.payment_method === "cash");
 
     return matchesSearch && matchesStatus && matchesMethod;
   });
@@ -217,10 +300,28 @@ export function PaymentHistory({ onPageChange }) {
             Back to Dashboard
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Payment History</h1>
+            <h1 className="text-2xl font-bold text-foreground">Transaction History</h1>
             <p className="text-muted-foreground">View and manage all payment transactions</p>
           </div>
         </div>
+        <Button
+          variant="outline"
+          onClick={refreshPayments}
+          className="border-border hover:bg-primary/5"
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading...
+            </>
+          ) : (
+            <>
+              <Search className="mr-2 h-4 w-4" />
+              Refresh
+            </>
+          )}
+        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -370,7 +471,31 @@ export function PaymentHistory({ onPageChange }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredPayments.map((payment) => {
+                {filteredPayments.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8">
+                      <div className="flex flex-col items-center justify-center space-y-2">
+                        <CreditCard className="h-12 w-12 text-muted-foreground opacity-50" />
+                        <p className="text-lg font-medium text-foreground">No transactions found</p>
+                        <p className="text-sm text-muted-foreground">
+                          {payments.length === 0 
+                            ? "No payments have been processed yet. Process a payment from POS to see it here."
+                            : "No payments match your current filters. Try adjusting your search criteria."}
+                        </p>
+                        {payments.length === 0 && (
+                          <Button
+                            variant="outline"
+                            onClick={() => onPageChange("payments/pos")}
+                            className="mt-4 border-border hover:bg-primary/5"
+                          >
+                            Go to Point of Sale
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredPayments.map((payment) => {
                   const clientName = payment.client?.name || payment.client_name || "Unknown Client";
                   const serviceName = payment.service?.name || payment.service_name || "Unknown Service";
                   const providerName = payment.provider?.name || payment.provider_name || "Unknown Provider";
@@ -383,8 +508,22 @@ export function PaymentHistory({ onPageChange }) {
                       </TableCell>
                       <TableCell>
                         <div>
-                          <div className="text-foreground">{serviceName}</div>
-                          <div className="text-sm text-muted-foreground">{providerName}</div>
+                          <div className="text-foreground">
+                            {payment.paymentItems && payment.paymentItems.length > 0 ? (
+                              <div className="space-y-1">
+                                {payment.paymentItems.map((item, idx) => (
+                                  <div key={idx} className="text-sm">
+                                    {item.item_name} (x{item.quantity}) - ${parseFloat(item.subtotal).toFixed(2)}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              serviceName || 'POS Transaction'
+                            )}
+                          </div>
+                          {payment.transaction_id && (
+                            <div className="text-xs text-muted-foreground">ID: {payment.transaction_id}</div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -392,7 +531,11 @@ export function PaymentHistory({ onPageChange }) {
                           ${payment.amount.toLocaleString()}
                         </div>
                       </TableCell>
-                      <TableCell className="text-foreground">{payment.payment_method}</TableCell>
+                      <TableCell className="text-foreground">
+                        {payment.payment_method === 'stripe' ? 'Credit/Debit Card' : 
+                         payment.payment_method === 'cash' ? 'Cash' : 
+                         payment.payment_method || 'N/A'}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           {getStatusIcon(payment.status)}
@@ -441,7 +584,8 @@ export function PaymentHistory({ onPageChange }) {
                       </TableCell>
                     </TableRow>
                   );
-                })}
+                  })
+                )}
               </TableBody>
             </Table>
           </div>
@@ -450,15 +594,15 @@ export function PaymentHistory({ onPageChange }) {
 
       {/* Payment Details Dialog */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="bg-card border-border max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0 pb-4">
             <DialogTitle>Payment Details</DialogTitle>
             <DialogDescription>
               Complete information about this payment transaction
             </DialogDescription>
           </DialogHeader>
           {selectedPayment && (
-            <div className="space-y-6">
+            <div className="flex-1 overflow-y-auto pr-2 space-y-6 pb-4 custom-scrollbar">
               {/* Transaction Information */}
               <div>
                 <h3 className="font-semibold text-foreground mb-3 flex items-center">
@@ -468,8 +612,26 @@ export function PaymentHistory({ onPageChange }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
                   <div>
                     <div className="text-sm text-muted-foreground">Transaction ID</div>
-                    <div className="font-medium text-foreground">{selectedPayment.transaction_id || 'N/A'}</div>
+                    <div className="font-medium text-foreground">{selectedPayment.transaction_id || `Payment #${selectedPayment.id}`}</div>
                   </div>
+                  {selectedPayment.paymentItems && selectedPayment.paymentItems.length > 0 && (
+                    <div className="md:col-span-2">
+                      <div className="text-sm text-muted-foreground mb-2">Items Purchased</div>
+                      <div className="space-y-2">
+                        {selectedPayment.paymentItems.map((item, idx) => (
+                          <div key={idx} className="flex justify-between p-2 bg-background rounded border border-border">
+                            <div>
+                              <div className="font-medium text-foreground">{item.item_name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {item.item_type.charAt(0).toUpperCase() + item.item_type.slice(1)} × {item.quantity}
+                              </div>
+                            </div>
+                            <div className="font-medium text-foreground">${parseFloat(item.subtotal).toFixed(2)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <div className="text-sm text-muted-foreground">Amount</div>
                     <div className="font-medium text-foreground">
@@ -540,23 +702,24 @@ export function PaymentHistory({ onPageChange }) {
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex justify-end space-x-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsDetailsOpen(false)}
-                  className="border-border hover:bg-primary/5"
-                >
-                  Close
-                </Button>
-                <Button
-                  onClick={() => handleDownloadReceipt(selectedPayment.id)}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Download Receipt
-                </Button>
-              </div>
+            </div>
+          )}
+          {selectedPayment && (
+            <div className="flex-shrink-0 flex justify-end space-x-2 pt-4 border-t border-border mt-4">
+              <Button
+                variant="outline"
+                onClick={() => setIsDetailsOpen(false)}
+                className="border-border hover:bg-primary/5"
+              >
+                Close
+              </Button>
+              <Button
+                onClick={() => handleDownloadReceipt(selectedPayment.id)}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download Receipt
+              </Button>
             </div>
           )}
         </DialogContent>

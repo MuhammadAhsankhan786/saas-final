@@ -228,3 +228,19 @@ html {
   font-size: var(--font-size);
 }
 
+/* Hide Stripe Link completely - direct card input only */
+[data-testid*="link"],
+[class*="Link"],
+button[aria-label*="Link"],
+a[href*="link.com"],
+.StripeElement--link,
+iframe[src*="checkout.link.com"],
+iframe[src*="link.com"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  width: 0 !important;
+  pointer-events: none !important;
+}
+

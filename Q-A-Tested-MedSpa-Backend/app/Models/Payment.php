@@ -11,7 +11,8 @@ class Payment extends Model
 
     protected $fillable = [
         'client_id', 'appointment_id', 'package_id', 'amount',
-        'payment_method', 'stripe_payment_intent_id', 'tips', 'commission', 'status'
+        'payment_method', 'stripe_payment_intent_id', 'tips', 'commission', 'status',
+        'transaction_id', 'notes'
     ];
 
     // Relations
@@ -25,5 +26,9 @@ class Payment extends Model
 
     public function package() {
         return $this->belongsTo(Package::class);
+    }
+
+    public function paymentItems() {
+        return $this->hasMany(PaymentItem::class);
     }
 }
