@@ -66,13 +66,20 @@ class ComplianceAlertController extends Controller
                             ->orderBy('due_date', 'asc')
                             ->get();
 
-            return response()->json($alerts);
+            return response()->json([
+                'success' => true,
+                'data' => $alerts
+            ], 200);
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Error fetching compliance alerts', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            return response()->json([]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch compliance alerts',
+                'data' => []
+            ], 500);
         }
     }
 

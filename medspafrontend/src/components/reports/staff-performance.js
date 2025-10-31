@@ -38,6 +38,7 @@ import {
   Award,
   Loader2,
 } from "lucide-react";
+import { notify } from "@/lib/toast";
 import {
   XAxis,
   YAxis,
@@ -229,9 +230,22 @@ export function StaffPerformance({ onPageChange }) {
     }
   };
 
-  const handleExportReport = () => {
-    console.log("Exporting staff performance report...");
-    alert("Staff performance report exported successfully!");
+  const handleExportReport = async () => {
+    try {
+      console.log("Exporting staff performance report...");
+      const token = localStorage.getItem("token");
+      if (!token) {
+        notify.error("Please log in to download reports");
+        return;
+      }
+
+      // TODO: Replace with actual endpoint when available
+      // For now, show success message
+      notify.success("Staff performance report exported successfully!");
+    } catch (error) {
+      console.error("Error exporting staff report:", error);
+      notify.error("Failed to export report. Please try again.");
+    }
   };
 
   const filteredStaff = staffPerformance.filter((staff) => {

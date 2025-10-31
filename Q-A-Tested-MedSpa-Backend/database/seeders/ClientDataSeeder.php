@@ -72,11 +72,16 @@ class ClientDataSeeder extends Seeder
         if ($appointmentCount < 3) {
             echo "Creating appointments...\n";
             
+            $pastStart = Carbon::now()->subDays(5)->setTime(10, 0);
+            $todayStart = Carbon::today()->setTime(14, 0);
+            $futureStart = Carbon::now()->addDays(7)->setTime(16, 0);
+            
             // Past appointment
             DB::table('appointments')->insert([
                 'client_id' => $clientId,
                 'location_id' => $locationId,
-                'start_time' => Carbon::now()->subDays(5)->setTime(10, 0),
+                'appointment_time' => $pastStart,
+                'start_time' => $pastStart,
                 'end_time' => Carbon::now()->subDays(5)->setTime(11, 0),
                 'status' => 'completed',
                 'notes' => 'Completed facial treatment',
@@ -88,9 +93,10 @@ class ClientDataSeeder extends Seeder
             DB::table('appointments')->insert([
                 'client_id' => $clientId,
                 'location_id' => $locationId,
-                'start_time' => Carbon::today()->setTime(14, 0),
+                'appointment_time' => $todayStart,
+                'start_time' => $todayStart,
                 'end_time' => Carbon::today()->setTime(15, 0),
-                'status' => 'confirmed',
+                'status' => 'booked',
                 'notes' => 'Upcoming skin consultation',
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
@@ -100,8 +106,9 @@ class ClientDataSeeder extends Seeder
             DB::table('appointments')->insert([
                 'client_id' => $clientId,
                 'location_id' => $locationId,
-                'start_time' => Carbon::now()->addDays(7)->setTime(16, 0),
-                ' Anyone_time' => Carbon::now()->addDays(7)->setTime(17, 0),
+                'appointment_time' => $futureStart,
+                'start_time' => $futureStart,
+                'end_time' => Carbon::now()->addDays(7)->setTime(17, 0),
                 'status' => 'booked',
                 'notes' => 'Future treatment session',
                 'created_at' => Carbon::now(),
@@ -118,8 +125,10 @@ class ClientDataSeeder extends Seeder
             DB::table('payments')->insert([
                 'client_id' => $clientId,
                 'amount' => 150.00,
-                'payment_method' => 'card',
+                'payment_method' => 'stripe',
                 'status' => 'completed',
+                'tips' => 20.00,
+                'commission' => 30.00,
                 'created_at' => Carbon::now()->subDays(5),
                 'updated_at' => Carbon::now()->subDays(5),
             ]);
@@ -129,7 +138,9 @@ class ClientDataSeeder extends Seeder
                 'client_id' => $clientId,
                 'amount' => 85.00,
                 'payment_method' => 'cash',
-                'status' => 'pending',
+                'status' => 'completed',
+                'tips' => 10.00,
+                'commission' => 15.00,
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
             ]);
@@ -216,6 +227,7 @@ class ClientDataSeeder extends Seeder
                 $serviceId = $service->id;
             } else {
                 $serviceId = DB::table('services')->insertGetId([
+                    'category' => 'Facial',
                     'name' => 'Facial Treatment',
                     'description' => 'Deep cleansing facial',
                     'price' => 100.00,

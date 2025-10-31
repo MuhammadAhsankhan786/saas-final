@@ -277,23 +277,51 @@ export async function fetchWithAuth(url, options = {}) {
       }
       
       if (status === 422) {
-        // Validation error - parse silently and create user-friendly message
+        // Validation error - parse and create user-friendly message
         try {
-          const errorData = await res.json();
+          // Clone response to read it without consuming it
+          const responseText = await res.clone().text();
+          console.error("422 Response raw text:", responseText);
           
-          // Create user-friendly error message without console logs
-          if (errorData.errors) {
-            const errorMessages = Object.values(errorData.errors).flat().join(', ');
-            const error = new Error(errorMessages);
-            error.errors = errorData.errors;
-            throw error;
-          } else if (errorData.message) {
-            throw new Error(errorData.message);
-          } else {
-            throw new Error("Validation failed. Please fill all required fields correctly.");
+          let errorData = {};
+          try {
+            errorData = JSON.parse(responseText);
+            console.error("422 Validation Error Data:", errorData);
+          } catch (parseErr) {
+            console.error("Failed to parse 422 response as JSON:", parseErr);
+            // If not JSON, treat as plain text message
+            errorData = { message: responseText || "Validation failed" };
           }
+          
+          // Create error with response data attached
+          let errorMessage;
+          if (errorData.errors && Object.keys(errorData.errors).length > 0) {
+            errorMessage = Object.entries(errorData.errors)
+              .flatMap(([field, messages]) => {
+                const msgArray = Array.isArray(messages) ? messages : [messages];
+                return msgArray.map(msg => `${field}: ${msg}`);
+              })
+              .join('; ');
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else {
+            errorMessage = "Validation failed. Please check your input and fill all required fields correctly.";
+          }
+          
+          console.error("422 Error message:", errorMessage);
+          const error = new Error(errorMessage);
+          error.response = { data: errorData, status: 422 };
+          error.errors = errorData.errors;
+          throw error;
         } catch (parseError) {
-          throw new Error("Validation failed. Please check your input.");
+          // If it's already an Error with response, re-throw it
+          if (parseError instanceof Error && parseError.response) {
+            throw parseError;
+          }
+          console.error("Error handling 422 response:", parseError);
+          const error = new Error("Validation failed. Please check your input.");
+          error.response = { data: { message: "Could not parse validation errors" }, status: 422 };
+          throw error;
         }
       }
       

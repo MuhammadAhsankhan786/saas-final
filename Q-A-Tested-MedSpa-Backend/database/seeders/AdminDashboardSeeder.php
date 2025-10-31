@@ -92,14 +92,50 @@ class AdminDashboardSeeder extends Seeder
         }
 
         // Create appointments
+        // Get a provider user for appointments
+        $provider = DB::table('users')->where('role', 'provider')->first();
+        if (!$provider) {
+            $providerId = DB::table('users')->insertGetId([
+                'name' => 'Provider User',
+                'email' => 'provider@medispa.com',
+                'password' => bcrypt('demo123'),
+                'role' => 'provider',
+                'created_at' => Carbon::now(),
+                'updated_at' => Carbon::now(),
+            ]);
+        } else {
+            $providerId = $provider->id;
+        }
+        
+        // Get a service
+        $service = DB::table('services')->first();
+        if (!$service) {
+            $serviceId = DB::table('services')->insertGetId([
+                'category' => 'Facial',
+                'name' => 'Basic Service',
+                'price' => 100.00,
+                'description' => 'Basic service',
+                'created_at' => Carbon::now(),
+                'updated_at' => Carbon::now(),
+            ]);
+        } else {
+            $serviceId = $service->id;
+        }
+        
         for ($i = 1; $i <= 15; $i++) {
             $clientId = $clientUserIds[array_rand($clientUserIds)];
-            $apptTime = Carbon::now()->addDays(rand(-30, 30))->setTime(rand(9, 17), rand(0, 59));
+            $startTime = Carbon::now()->addDays(rand(-30, 30))->setTime(rand(9, 17), rand(0, 59));
+            $endTime = $startTime->copy()->addHours(1);
             
             DB::table('appointments')->insert([
                 'client_id' => $clientId,
                 'location_id' => $locationId,
-                'appointment_time' => $apptTime,
+                'provider_id' => $providerId,
+                'service_id' => $serviceId,
+                'appointment_time' => $startTime,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'status' => ['booked', 'completed', 'canceled'][rand(0, 2)],
                 'notes' => "Appointment #$i notes",
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
@@ -108,13 +144,15 @@ class AdminDashboardSeeder extends Seeder
 
         // Create payments (skip if payments table doesn't exist)
         try {
-            $paymentMethods = ['cash', 'card', 'check'];
+            $paymentMethods = ['cash', 'stripe'];
             for ($i = 1; $i <= 20; $i++) {
                 DB::table('payments')->insert([
                     'client_id' => $clientUserIds[array_rand($clientUserIds)],
                     'amount' => rand(50, 500),
-                    'payment_method' => $paymentMethods[rand(0, 2)],
-                    'status' => ['completed', 'pending'][rand(0, 1)],
+                    'payment_method' => $paymentMethods[rand(0, 1)],
+                    'status' => 'completed',
+                    'tips' => rand(0, 50),
+                    'commission' => rand(10, 100),
                     'created_at' => Carbon::now(),
                     'updated_at' => Carbon::now(),
                 ]);
@@ -128,36 +166,50 @@ class AdminDashboardSeeder extends Seeder
         for ($i = 1; $i <= 15; $i++) {
             $currentStock = rand(0, 100);
             $minStock = 10;
+            $sku = "SKU-$i";
             
-            $productId = DB::table('products')->insertGetId([
-                'name' => "Product $i",
-                'sku' => "SKU-$i",
-                'category' => $categories[rand(0, 3)],
-                'supplier' => "Supplier $i",
-                'price' => rand(20, 200),
-                'current_stock' => $currentStock,
-                'min_stock' => $minStock,
-                'location_id' => $locationId,
-                'created_at' => Carbon::now(),
-                'updated_at' => Carbon::now(),
-            ]);
-
-            // Create stock alerts if stock is low
-            if ($currentStock < $minStock) {
-                DB::table('stock_alerts')->insert([
-                    'product_id' => $productId,
-                    'product_name' => "Product $i",
-                    'sku' => "SKU-$i",
+            // Check if product already exists
+            $existingProduct = DB::table('products')->where('sku', $sku)->first();
+            if ($existingProduct) {
+                $productId = $existingProduct->id;
+                $currentStock = $existingProduct->current_stock ?? $currentStock;
+            } else {
+                $productId = DB::table('products')->insertGetId([
+                    'name' => "Product $i",
+                    'sku' => $sku,
                     'category' => $categories[rand(0, 3)],
-                    'supplier' => "Supplier $i",
+                    'price' => rand(20, 200),
                     'current_stock' => $currentStock,
-                    'min_stock' => $minStock,
-                    'alert_type' => 'low-stock',
-                    'priority' => $currentStock < 5 ? 'critical' : 'high',
-                    'status' => 'active',
+                    'minimum_stock' => $minStock,
+                    'location_id' => $locationId,
                     'created_at' => Carbon::now(),
                     'updated_at' => Carbon::now(),
                 ]);
+            }
+
+            // Create stock alerts if stock is low (only if alert doesn't already exist)
+            if ($currentStock < $minStock) {
+                $existingAlert = DB::table('stock_alerts')
+                    ->where('product_id', $productId)
+                    ->where('status', 'active')
+                    ->first();
+                    
+                if (!$existingAlert) {
+                    DB::table('stock_alerts')->insert([
+                        'product_id' => $productId,
+                        'product_name' => "Product $i",
+                        'sku' => $sku,
+                        'category' => $categories[rand(0, 3)],
+                        'supplier' => "Supplier $i",
+                        'current_stock' => $currentStock,
+                        'min_stock' => $minStock,
+                        'alert_type' => 'low-stock',
+                        'priority' => $currentStock < 5 ? 'critical' : 'high',
+                        'status' => 'active',
+                        'created_at' => Carbon::now(),
+                        'updated_at' => Carbon::now(),
+                    ]);
+                }
             }
         }
 

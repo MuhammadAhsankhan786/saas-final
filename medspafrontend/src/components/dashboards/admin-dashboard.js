@@ -68,7 +68,8 @@ export function AdminDashboard({ onPageChange }) {
         
         // Fetch dashboard stats from dedicated endpoint (READ-ONLY)
         console.log('📊 Admin: Fetching dashboard stats from /admin/dashboard...');
-        const dashboardStats = await getAdminDashboardStats();
+        const dashboardRaw = await getAdminDashboardStats();
+        const dashboardStats = dashboardRaw?.data || dashboardRaw || {};
         
         // Also fetch detailed data for charts
         const results = await Promise.allSettled([
@@ -89,10 +90,10 @@ export function AdminDashboard({ onPageChange }) {
         const revenueData = results[5].status === 'fulfilled' ? results[5].value : {};
 
         // Use dashboard stats for KPIs (live MySQL data)
-        const totalRevenue = dashboardStats?.revenue?.total || payments?.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) || 0;
-        const activeClientsCount = dashboardStats?.clients?.active || clients?.filter(c => c.status === 'active').length || clients?.length || 0;
-        const appointmentsCount = dashboardStats?.appointments?.total || appointments?.length || 0;
-        const alertsCount = dashboardStats?.inventory?.low_stock || stockAlerts?.length || 0;
+        const totalRevenue = Number(dashboardStats?.total_revenue) || payments?.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) || 0;
+        const activeClientsCount = Number(dashboardStats?.total_clients) || clients?.filter(c => c.status === 'active').length || clients?.length || 0;
+        const appointmentsCount = Number(dashboardStats?.todays_appointments) || appointments?.length || 0;
+        const alertsCount = Array.isArray(stockAlerts) ? stockAlerts.length : 0;
         
         console.log('✅ Admin dashboard: Live data loaded from MySQL', {
           revenue: totalRevenue,
@@ -128,15 +129,11 @@ export function AdminDashboard({ onPageChange }) {
           },
         });
 
-        // Format revenue data for chart (simplified - would need proper monthly aggregation)
-        setMonthlyRevenue([
-          { month: "Jan", revenue: Math.round(totalRevenue / 6) },
-          { month: "Feb", revenue: Math.round(totalRevenue / 6) },
-          { month: "Mar", revenue: Math.round(totalRevenue / 6) },
-          { month: "Apr", revenue: Math.round(totalRevenue / 6) },
-          { month: "May", revenue: Math.round(totalRevenue / 6) },
-          { month: "Jun", revenue: totalRevenue },
-        ]);
+        // Monthly revenue from backend
+        const monthly = Array.isArray(dashboardStats?.monthly_revenue)
+          ? dashboardStats.monthly_revenue.map((m) => ({ month: m.month, revenue: Number(m.total) || 0 }))
+          : [];
+        setMonthlyRevenue(monthly);
 
         // Top services (would need service revenue aggregation from backend)
         setTopServices([

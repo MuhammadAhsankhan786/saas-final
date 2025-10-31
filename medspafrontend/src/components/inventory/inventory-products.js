@@ -52,6 +52,7 @@ import {
   Download,
 } from "lucide-react";
 import { getProducts, createProduct, updateProduct, deleteProduct, adjustStock } from "@/lib/api";
+import { notify } from "@/lib/toast";
 
 export function InventoryProducts({ onPageChange }) {
   const role = JSON.parse(localStorage.getItem("user") || "{}").role;
@@ -464,11 +465,23 @@ export function InventoryProducts({ onPageChange }) {
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        alert("Please log in to download reports");
+        notify.error("Please log in to download reports");
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/admin/inventory/pdf`, {
+      // Use role-based endpoint
+      const userRole = JSON.parse(localStorage.getItem("user") || "{}").role;
+      let endpoint;
+      if (userRole === "admin") {
+        endpoint = "/admin/products/pdf";
+      } else if (userRole === "provider" || userRole === "reception") {
+        endpoint = "/staff/products/pdf";
+      } else {
+        notify.error("You don't have permission to export inventory reports");
+        return;
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}${endpoint}`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -490,9 +503,10 @@ export function InventoryProducts({ onPageChange }) {
       
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      notify.success("Inventory report downloaded successfully!");
     } catch (error) {
       console.error("Error downloading inventory report:", error);
-      alert("Failed to generate PDF. Please try again.");
+      notify.error("Failed to generate PDF. Please try again.");
     }
   };
 

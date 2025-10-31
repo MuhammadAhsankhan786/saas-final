@@ -100,11 +100,12 @@ export function AppointmentList({ onPageChange }) {
         
         const data = await getAppointments();
         console.log("📋 Appointments fetched:", data);
+
+        // Support both array and { data: [...] } response shapes
+        const rawList = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
         
         // Format appointments for display
-        const formattedAppointments = Array.isArray(data) 
-          ? data.map(formatAppointmentForDisplay)
-          : [];
+        const formattedAppointments = rawList.map(formatAppointmentForDisplay);
         setAppointments(formattedAppointments);
         
         // Show success toast and console log for provider
@@ -130,6 +131,21 @@ export function AppointmentList({ onPageChange }) {
     }
     fetchAppointments();
   }, [isAdmin]);
+
+  // Listen for global refresh requests (e.g., after Reception creates a new appointment)
+  useEffect(() => {
+    const refreshHandler = () => {
+      handleRefreshAppointments();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('refresh-appointments', refreshHandler);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('refresh-appointments', refreshHandler);
+      }
+    };
+  }, []);
 
   const getStatusIcon = (status) => {
     switch (status) {

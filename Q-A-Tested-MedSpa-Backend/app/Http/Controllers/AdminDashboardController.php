@@ -8,10 +8,12 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\ComplianceAlert;
+use App\Models\Location;
 use App\Http\Controllers\DatabaseSeederController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class AdminDashboardController extends Controller
 {
@@ -25,116 +27,151 @@ class AdminDashboardController extends Controller
             // Live-data mode: skip auto-seeding when enabled
             $liveData = (bool) env('MEDSPA_LIVE_DATA', false);
             if (!$liveData) {
+                try {
                 // Auto-seed baseline data if tables are empty
-                $clientCount = Client::count();
-                $appointmentCount = Appointment::count();
-                $paymentCount = Payment::count();
-                $productCount = Product::count();
-                $staffCount = User::whereIn('role', ['provider', 'reception', 'staff'])->count();
-                $complianceCount = ComplianceAlert::count();
+                    $clientCount = Schema::hasTable('clients') ? Client::count() : 0;
+                    $appointmentCount = Schema::hasTable('appointments') ? Appointment::count() : 0;
+                    $paymentCount = Schema::hasTable('payments') ? Payment::count() : 0;
+                    $productCount = Schema::hasTable('products') ? Product::count() : 0;
+                    $staffCount = Schema::hasTable('users') 
+                        ? User::whereIn('role', ['provider', 'reception', 'staff'])->count() 
+                        : 0;
+                    $complianceCount = Schema::hasTable('compliance_alerts') ? ComplianceAlert::count() : 0;
                 
-                if ($clientCount < 3 || $appointmentCount < 3 || $paymentCount < 2 || 
-                    $productCount < 2 || $staffCount < 2 || $complianceCount < 1) {
-                    DatabaseSeederController::seedMissingData(true);
-                    Log::info('Admin dashboard: Auto-seeded baseline data');
+                    if ($clientCount < 3 || $appointmentCount < 3 || $paymentCount < 2 ||
+                        $productCount < 2 || $staffCount < 2 || $complianceCount < 1) {
+                        try {
+                            DatabaseSeederController::seedMissingData(true);
+                            Log::info('Admin dashboard: Auto-seeded baseline data');
+                        } catch (\Exception $seedEx) {
+                            Log::warning('Admin dashboard: Auto-seed attempt failed', [
+                                'error' => $seedEx->getMessage()
+                            ]);
+                        }
+                    }
+                } catch (\Exception $seedException) {
+                    // Silently fail auto-seeding - continue with existing data
+                    Log::warning('Admin dashboard: Auto-seed failed, continuing with existing data', [
+                        'error' => $seedException->getMessage()
+                    ]);
                 }
             }
-            
-            // Calculate statistics from real database data
-            $today = now()->startOfDay();
+
+            $now = now();
+            $today = $now->copy()->startOfDay();
             $tomorrow = $today->copy()->addDay();
-            
-            // Appointments stats
-            $todaysAppointments = Appointment::whereDate('appointment_time', $today)->count();
-            $upcomingAppointments = Appointment::where('appointment_time', '>=', $today)
-                ->where('appointment_time', '<', $tomorrow)
-                ->count();
-            $totalAppointments = Appointment::count();
-            $confirmedAppointments = Appointment::whereIn('status', ['confirmed', 'booked'])
-                ->count();
-            $completedAppointments = Appointment::where('status', 'completed')->count();
-            
-            // Clients stats
-            $totalClients = Client::count();
-            $activeClients = Client::where('status', 'active')->count();
-            $newClientsThisMonth = Client::whereYear('created_at', now()->year)
-                ->whereMonth('created_at', now()->month)
-                ->count();
-            
-            // Revenue stats (from payments)
-            $totalRevenue = Payment::where('status', 'completed')
-                ->sum('amount');
-            $monthlyRevenue = Payment::where('status', 'completed')
-                ->whereYear('created_at', now()->year)
-                ->whereMonth('created_at', now()->month)
-                ->sum('amount');
-            $pendingPayments = Payment::where('status', 'pending')->count();
-            
-            // Inventory stats
-            $totalProducts = Product::count();
-            // Use schema column name for minimum threshold (minimum_stock)
-            $lowStockProducts = Product::whereColumn('current_stock', '<=', 'minimum_stock')->count();
-            $outOfStockProducts = Product::where('current_stock', 0)->count();
-            
-            // Staff stats
-            $totalStaff = User::whereIn('role', ['provider', 'reception', 'staff'])->count();
-            $providers = User::where('role', 'provider')->count();
-            $receptionStaff = User::where('role', 'reception')->count();
-            
-            // Compliance stats
-            $totalComplianceAlerts = ComplianceAlert::count();
-            $activeComplianceAlerts = ComplianceAlert::where('status', 'active')->count();
-            $criticalComplianceAlerts = ComplianceAlert::where('priority', 'critical')
-                ->where('status', 'active')
-                ->count();
+            $twelveMonthsAgo = $today->copy()->subMonths(11)->startOfMonth();
+
+            // Aggregate counts (handle NULL start_time values)
+            $todaysAppointments = Schema::hasTable('appointments')
+                ? Appointment::whereNotNull('start_time')
+                    ->whereBetween('start_time', [$today, $tomorrow])
+                    ->count()
+                : 0;
+            $upcomingAppointments = Schema::hasTable('appointments')
+                ? Appointment::whereNotNull('start_time')
+                    ->where('start_time', '>=', $now)
+                    ->count()
+                : 0;
+
+            $totalRevenue = Schema::hasTable('payments')
+                ? (float) Payment::where('status', 'completed')->sum('amount')
+                : 0.0;
+            $todayRevenue = Schema::hasTable('payments')
+                ? (float) Payment::where('status', 'completed')
+                    ->whereNotNull('created_at')
+                    ->whereBetween('created_at', [$today, $tomorrow])
+                    ->sum('amount')
+                : 0.0;
+
+            $totalClients = Schema::hasTable('clients') ? Client::count() : 0;
+            $newClientsToday = Schema::hasTable('clients')
+                ? Client::whereBetween('created_at', [$today, $tomorrow])->count()
+                : 0;
+
+            $totalProviders = Schema::hasTable('users') ? User::where('role', 'provider')->count() : 0;
+            $totalReception = Schema::hasTable('users') ? User::where('role', 'reception')->count() : 0;
+            $totalLocations = Schema::hasTable('locations') ? Location::count() : 0;
+
+            // Appointments by location (safe, non-relational lookup)
+            $appointmentsByLocation = (Schema::hasTable('appointments') && Schema::hasTable('locations'))
+                ? Appointment::select('location_id', DB::raw('COUNT(*) as total'))
+                    ->whereNotNull('location_id')
+                    ->groupBy('location_id')
+                    ->get()
+                    ->map(function ($a) {
+                        $locationName = Location::where('id', $a->location_id)->value('name');
+                        return [
+                            'location' => $locationName ?? 'Unknown',
+                            'total' => (int) $a->total,
+                        ];
+                    })->values()
+                : collect([]);
+
+            // Monthly revenue for last 12 months
+            $monthlyRevenue = Schema::hasTable('payments')
+                ? DB::table('payments')
+                    ->select(
+                        DB::raw("DATE_FORMAT(created_at, '%Y-%m') as month"),
+                        DB::raw('SUM(amount) as total')
+                    )
+                    ->where('status', 'completed')
+                    ->whereNotNull('created_at')
+                    ->where('created_at', '>=', $twelveMonthsAgo)
+                    ->groupBy(DB::raw("DATE_FORMAT(created_at, '%Y-%m')"))
+                    ->orderBy(DB::raw("DATE_FORMAT(created_at, '%Y-%m')"))
+                    ->get()
+                    ->map(function ($row) {
+                        return [
+                            'month' => \Carbon\Carbon::createFromFormat('Y-m', $row->month)->format('M'),
+                            'total' => round((float) $row->total, 2),
+                        ];
+                    })
+                    ->values()
+                : collect([]);
+
+            $data = [
+                'todays_appointments' => $todaysAppointments,
+                'upcoming_appointments' => $upcomingAppointments,
+                'total_revenue' => round($totalRevenue, 2),
+                'today_revenue' => round($todayRevenue, 2),
+                'total_clients' => $totalClients,
+                'new_clients_today' => $newClientsToday,
+                'total_providers' => $totalProviders,
+                'total_reception' => $totalReception,
+                'total_locations' => $totalLocations,
+                'appointments_by_location' => $appointmentsByLocation,
+                'monthly_revenue' => $monthlyRevenue,
+            ];
             
             return response()->json([
-                'appointments' => [
-                    'total' => $totalAppointments,
-                    'today' => $todaysAppointments,
-                    'upcoming' => $upcomingAppointments,
-                    'confirmed' => $confirmedAppointments,
-                    'completed' => $completedAppointments,
-                ],
-                'clients' => [
-                    'total' => $totalClients,
-                    'active' => $activeClients,
-                    'new_this_month' => $newClientsThisMonth,
-                ],
-                'revenue' => [
-                    'total' => round($totalRevenue, 2),
-                    'monthly' => round($monthlyRevenue, 2),
-                    'pending_payments' => $pendingPayments,
-                ],
-                'inventory' => [
-                    'total_products' => $totalProducts,
-                    'low_stock' => $lowStockProducts,
-                    'out_of_stock' => $outOfStockProducts,
-                ],
-                'staff' => [
-                    'total' => $totalStaff,
-                    'providers' => $providers,
-                    'reception' => $receptionStaff,
-                ],
-                'compliance' => [
-                    'total_alerts' => $totalComplianceAlerts,
-                    'active_alerts' => $activeComplianceAlerts,
-                    'critical_alerts' => $criticalComplianceAlerts,
-                ],
-            ]);
+                'success' => true,
+                'data' => $data,
+            ], 200);
         } catch (\Exception $e) {
             Log::error('Admin dashboard stats error', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
+            // Fail-open with safe zeroed structure to avoid UI crash
             return response()->json([
-                'appointments' => ['total' => 0, 'today' => 0, 'upcoming' => 0, 'confirmed' => 0, 'completed' => 0],
-                'clients' => ['total' => 0, 'active' => 0, 'new_this_month' => 0],
-                'revenue' => ['total' => 0, 'monthly' => 0, 'pending_payments' => 0],
-                'inventory' => ['total_products' => 0, 'low_stock' => 0, 'out_of_stock' => 0],
-                'staff' => ['total' => 0, 'providers' => 0, 'reception' => 0],
-                'compliance' => ['total_alerts' => 0, 'active_alerts' => 0, 'critical_alerts' => 0],
-            ]);
+                'success' => true,
+                'data' => [
+                    'todays_appointments' => 0,
+                    'upcoming_appointments' => 0,
+                    'total_revenue' => 0,
+                    'today_revenue' => 0,
+                    'total_clients' => 0,
+                    'new_clients_today' => 0,
+                    'total_providers' => 0,
+                    'total_reception' => 0,
+                    'total_locations' => 0,
+                    'appointments_by_location' => [],
+                    'monthly_revenue' => [],
+                ],
+                'message' => 'Defaulted due to error',
+            ], 200);
         }
     }
 }

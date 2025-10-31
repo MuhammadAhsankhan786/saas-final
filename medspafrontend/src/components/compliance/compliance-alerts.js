@@ -8,6 +8,7 @@ import {
   dismissComplianceAlert,
   exportComplianceAlertsToPDF 
 } from "@/lib/api";
+import { notify } from "@/lib/toast";
 import {
   Card,
   CardContent,
@@ -95,12 +96,16 @@ export function ComplianceAlerts({ onPageChange }) {
         if (statusFilter !== "All") filters.status = statusFilter;
         if (categoryFilter !== "All") filters.category = categoryFilter;
         
-        const [alerts, stats] = await Promise.all([
+        const [alertsResponse, statsResponse] = await Promise.all([
           getComplianceAlerts(filters),
           getComplianceStatistics()
         ]);
         
-        setComplianceAlerts(alerts);
+        // Extract data from response: { success: true, data: [...] }
+        const alerts = alertsResponse?.data || (Array.isArray(alertsResponse) ? alertsResponse : []);
+        const stats = statsResponse?.data || statsResponse || {};
+        
+        setComplianceAlerts(Array.isArray(alerts) ? alerts : []);
         setStatistics(stats);
       } catch (error) {
         console.error("Error fetching compliance alerts:", error);
@@ -112,11 +117,14 @@ export function ComplianceAlerts({ onPageChange }) {
     fetchData();
   }, [searchQuery, typeFilter, priorityFilter, statusFilter, categoryFilter]);
 
+  // Ensure complianceAlerts is always an array before using filter
+  const safeComplianceAlerts = Array.isArray(complianceAlerts) ? complianceAlerts : [];
+  
   // Statistics
-  const totalAlerts = statistics.total_alerts || complianceAlerts.length;
-  const activeAlerts = statistics.active_alerts || complianceAlerts.filter(alert => alert.status === "active").length;
-  const criticalAlerts = statistics.critical_alerts || complianceAlerts.filter(alert => alert.priority === "critical").length;
-  const overdueAlerts = statistics.overdue_alerts || complianceAlerts.filter(alert => 
+  const totalAlerts = statistics.total_alerts || safeComplianceAlerts.length;
+  const activeAlerts = statistics.active_alerts || safeComplianceAlerts.filter(alert => alert.status === "active").length;
+  const criticalAlerts = statistics.critical_alerts || safeComplianceAlerts.filter(alert => alert.priority === "critical").length;
+  const overdueAlerts = statistics.overdue_alerts || safeComplianceAlerts.filter(alert => 
     new Date(alert.due_date) < new Date() && alert.status === "active"
   ).length;
 
@@ -186,14 +194,16 @@ export function ComplianceAlerts({ onPageChange }) {
       try {
         await resolveComplianceAlert(alertId);
         // Refresh data
-        const alerts = await getComplianceAlerts();
-        const stats = await getComplianceStatistics();
-        setComplianceAlerts(alerts);
+        const alertsResponse = await getComplianceAlerts();
+        const statsResponse = await getComplianceStatistics();
+        const alerts = alertsResponse?.data || (Array.isArray(alertsResponse) ? alertsResponse : []);
+        const stats = statsResponse?.data || statsResponse || {};
+        setComplianceAlerts(Array.isArray(alerts) ? alerts : []);
         setStatistics(stats);
         setIsDetailsOpen(false);
       } catch (error) {
         console.error("Error resolving alert:", error);
-        alert("Failed to resolve alert: " + error.message);
+        notify.error("Failed to resolve alert: " + error.message);
       }
     }
   };
@@ -203,14 +213,16 @@ export function ComplianceAlerts({ onPageChange }) {
       try {
         await dismissComplianceAlert(alertId);
         // Refresh data
-        const alerts = await getComplianceAlerts();
-        const stats = await getComplianceStatistics();
-        setComplianceAlerts(alerts);
+        const alertsResponse = await getComplianceAlerts();
+        const statsResponse = await getComplianceStatistics();
+        const alerts = alertsResponse?.data || (Array.isArray(alertsResponse) ? alertsResponse : []);
+        const stats = statsResponse?.data || statsResponse || {};
+        setComplianceAlerts(Array.isArray(alerts) ? alerts : []);
         setStatistics(stats);
         setIsDetailsOpen(false);
       } catch (error) {
         console.error("Error dismissing alert:", error);
-        alert("Failed to dismiss alert: " + error.message);
+        notify.error("Failed to dismiss alert: " + error.message);
       }
     }
   };
@@ -224,10 +236,10 @@ export function ComplianceAlerts({ onPageChange }) {
       };
       
       await exportComplianceAlertsToPDF(filters);
-      alert("Compliance alerts exported successfully!");
+      notify.success("Compliance alerts exported successfully!");
     } catch (error) {
       console.error("Error exporting alerts:", error);
-      alert("Failed to export alerts: " + error.message);
+      notify.error("Failed to export alerts: " + error.message);
     } finally {
       setLoading(false);
     }
@@ -261,7 +273,7 @@ export function ComplianceAlerts({ onPageChange }) {
       )}
 
       {/* Loading State */}
-      {loading && !complianceAlerts.length && (
+      {loading && (!complianceAlerts || !Array.isArray(complianceAlerts) || complianceAlerts.length === 0) && (
         <div className="text-center py-8">
           <div className="text-muted-foreground">Loading compliance alerts...</div>
         </div>
@@ -413,7 +425,7 @@ export function ComplianceAlerts({ onPageChange }) {
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-foreground">
-            Compliance Alerts ({complianceAlerts.length})
+            Compliance Alerts ({safeComplianceAlerts.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -431,7 +443,14 @@ export function ComplianceAlerts({ onPageChange }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {complianceAlerts.map((alert) => (
+                {safeComplianceAlerts.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center">
+                      {loading ? "Loading compliance alerts..." : "No compliance alerts found"}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  safeComplianceAlerts.map((alert) => (
                   <TableRow key={alert.id}>
                     <TableCell>
                       <div>
@@ -516,7 +535,8 @@ export function ComplianceAlerts({ onPageChange }) {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>

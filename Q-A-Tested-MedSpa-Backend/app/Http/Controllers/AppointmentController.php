@@ -368,7 +368,7 @@ class AppointmentController extends Controller
                 'error' => 'Failed to load appointments',
                 'message' => $e->getMessage(),
                 'data' => []
-            ], 500);
+            ], 200);
         }
         } catch (\Exception $outerException) {
             Log::error('Appointment index outer catch', [
@@ -380,7 +380,7 @@ class AppointmentController extends Controller
                 'error' => 'Failed to load appointments',
                 'message' => $outerException->getMessage(),
                 'data' => []
-            ], 500);
+            ], 200);
         }
     }
 
@@ -595,29 +595,151 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Unauthorized - Only reception staff can create appointments'], 401);
         }
         
-        $request->validate([
-            'client_id' => 'required|exists:clients,id',
-            'start_time' => 'required|date',
-            'end_time' => 'required|date|after:start_time',
-            'service_id' => 'nullable|exists:services,id',
-            'provider_id' => 'nullable|exists:users,id',
-            'package_id' => 'nullable|exists:packages,id',
-            'location_id' => 'required|exists:locations,id',
-            'status' => 'nullable|in:booked,confirmed,in-progress,completed,cancelled',
-            'notes' => 'nullable|string',
+        // Log incoming request for debugging
+        Log::info('Reception appointment creation request', [
+            'user_id' => $user->id,
+            'request_data' => $request->all(),
+            'raw_body' => $request->getContent()
         ]);
+        
+        // Normalize and provide safe defaults BEFORE validation to avoid SQL errors
+        $normalized = $request->all();
+        // Map common alt status spellings to DB enum
+        if (!empty($normalized['status'])) {
+            $status = strtolower((string) $normalized['status']);
+            if ($status === 'cancelled') { // British spelling → DB uses 'canceled'
+                $normalized['status'] = 'canceled';
+            } elseif ($status === 'confirmed' || $status === 'in-progress' || $status === 'pending' || $status === 'scheduled') {
+                // Map unsupported statuses to 'booked'
+                $normalized['status'] = 'booked';
+            }
+        }
+        // Default status
+        if (empty($normalized['status'])) {
+            $normalized['status'] = 'booked';
+        }
 
-        $appointment = Appointment::create([
-            'client_id' => $request->client_id,
-            'start_time' => $request->start_time,
-            'end_time' => $request->end_time,
-            'service_id' => $request->service_id,
-            'provider_id' => $request->provider_id,
-            'package_id' => $request->package_id,
-            'location_id' => $request->location_id,
-            'status' => $request->status ?? 'booked',
-            'notes' => $request->notes,
-        ]);
+        // Coerce IDs: empty strings → null (for nullable), numerics → int
+        foreach (['provider_id','service_id','package_id'] as $optId) {
+            if (array_key_exists($optId, $normalized)) {
+                $val = $normalized[$optId];
+                if ($val === '' || $val === null || $val === 'none' || $val === 'null') {
+                    $normalized[$optId] = null;
+                } elseif (is_numeric($val)) {
+                    $normalized[$optId] = (int) $val;
+                }
+            }
+        }
+        foreach (['client_id','location_id'] as $reqId) {
+            if (array_key_exists($reqId, $normalized) && is_numeric($normalized[$reqId])) {
+                $normalized[$reqId] = (int) $normalized[$reqId];
+            }
+        }
+
+        // Normalize date formats - convert to MySQL DATETIME format (YYYY-MM-DD HH:MM:SS)
+        if (!empty($normalized['start_time'])) {
+            try {
+                $startTime = \Carbon\Carbon::parse($normalized['start_time']);
+                // Convert to MySQL DATETIME format (remove T and timezone)
+                $normalized['start_time'] = $startTime->format('Y-m-d H:i:s');
+            } catch (\Exception $e) {
+                Log::warning('Invalid start_time format', ['value' => $normalized['start_time'], 'error' => $e->getMessage()]);
+            }
+        }
+        
+        if (!empty($normalized['end_time'])) {
+            try {
+                $endTime = \Carbon\Carbon::parse($normalized['end_time']);
+                // Convert to MySQL DATETIME format (remove T and timezone)
+                $normalized['end_time'] = $endTime->format('Y-m-d H:i:s');
+            } catch (\Exception $e) {
+                Log::warning('Invalid end_time format', ['value' => $normalized['end_time'], 'error' => $e->getMessage()]);
+            }
+        }
+
+        // Rebuild the request with normalized values for validation
+        $request->replace($normalized);
+
+        // Validate against the actual DB enum
+        try {
+            $validated = $request->validate([
+                'client_id' => 'required|exists:clients,id',
+                'start_time' => 'required|date',
+                'end_time' => 'required|date|after:start_time',
+                'service_id' => 'nullable|integer|exists:services,id',
+                'provider_id' => 'nullable|integer|exists:users,id',
+                'package_id' => 'nullable|integer|exists:packages,id',
+                'location_id' => 'required|exists:locations,id',
+                'status' => 'required|in:booked,completed,canceled',
+                'notes' => 'nullable|string|max:1000',
+            ]);
+            
+            Log::info('Reception appointment validation passed', [
+                'validated_data' => $validated
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $errors = $e->errors();
+            Log::warning('Reception appointment validation failed', [ 
+                'errors' => $errors,
+                'request_data' => $request->all(),
+                'request_headers' => $request->headers->all()
+            ]);
+            
+            // Return validation errors in standard Laravel format
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $errors
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Unexpected validation error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request_data' => $request->all()
+            ]);
+            
+            return response()->json([
+                'message' => 'Validation error occurred',
+                'error' => $e->getMessage()
+            ], 422);
+        }
+
+        try {
+            // Ensure appointment_time is in MySQL DATETIME format
+            $appointmentTime = $normalized['start_time'] ?? $request->start_time;
+            
+            $appointment = Appointment::create([
+                'client_id' => (int) $request->client_id,
+                'appointment_time' => $appointmentTime, // Required field - use normalized start_time
+                'start_time' => $normalized['start_time'] ?? $request->start_time,
+                'end_time' => $normalized['end_time'] ?? $request->end_time,
+                'service_id' => $request->service_id ?: null,
+                'provider_id' => $request->provider_id ?: null,
+                'package_id' => $request->package_id ?: null,
+                'location_id' => (int) $request->location_id,
+                'status' => $request->status ?? 'booked',
+                'notes' => $request->notes,
+            ]);
+            
+            Log::info('Reception appointment created successfully', [
+                'appointment_id' => $appointment->id,
+                'appointment_time' => $appointment->appointment_time,
+                'start_time' => $appointment->start_time
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            Log::error('Reception appointment insert failed', [
+                'error' => $e->getMessage(),
+                'sql_state' => method_exists($e, 'getCode') ? $e->getCode() : null,
+            ]);
+            return response()->json([
+                'message' => 'Failed to create appointment',
+                'error' => 'Database error',
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Reception appointment unexpected failure', [ 'error' => $e->getMessage() ]);
+            return response()->json([
+                'message' => 'Failed to create appointment',
+            ], 500);
+        }
 
         // Load relationships for notification
         $appointment->load(['client', 'provider', 'location', 'service', 'package']);

@@ -16,6 +16,7 @@ class Appointment extends Model
         'service_id',
         'package_id',
         'status',
+        'appointment_time', // Required field - must be in fillable for mass assignment
         'start_time',
         'end_time',
         'notes',

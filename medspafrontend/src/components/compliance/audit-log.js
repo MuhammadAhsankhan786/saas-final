@@ -41,6 +41,7 @@ import {
   Clock,
 } from "lucide-react";
 import { fetchWithAuth } from "../../lib/api";
+import { notify } from "../../lib/toast";
 
 const actionTypes = ["All", "create", "update", "delete", "login", "logout"];
 const tableTypes = ["All"];
@@ -68,7 +69,23 @@ export function AuditLog({ onPageChange }) {
       if (searchQuery) params.append("search", searchQuery);
 
       const response = await fetchWithAuth(`/admin/audit-logs?${params}`);
-      setAuditLogs(response.data || []);
+      
+      // Handle response structure: { success: true, data: { data: [...], ... } } for paginated
+      // or { success: true, data: [...] } for array
+      let logs = [];
+      if (response && response.data) {
+        // Check if it's a paginated response (has data.data array)
+        if (response.data.data && Array.isArray(response.data.data)) {
+          logs = response.data.data;
+        } 
+        // Check if it's a direct array
+        else if (Array.isArray(response.data)) {
+          logs = response.data;
+        }
+      }
+      
+      // Ensure auditLogs is always an array
+      setAuditLogs(Array.isArray(logs) ? logs : []);
     } catch (error) {
       console.error("Failed to fetch audit logs:", error);
       setAuditLogs([]);
@@ -91,7 +108,10 @@ export function AuditLog({ onPageChange }) {
     fetchAuditLogs();
   }, [actionFilter, tableFilter, searchQuery]);
 
-  const filteredLogs = auditLogs.filter((log) => {
+  // Ensure auditLogs is always an array before filtering
+  const safeAuditLogs = Array.isArray(auditLogs) ? auditLogs : [];
+  
+  const filteredLogs = safeAuditLogs.filter((log) => {
     const matchesSearch = searchQuery === "" || 
       (log.user && log.user.name && log.user.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (log.action && log.action.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -153,10 +173,11 @@ export function AuditLog({ onPageChange }) {
       link.remove();
       window.URL.revokeObjectURL(urlBlob);
       
+      notify.success("Audit logs exported successfully!");
       console.log("✅ Audit logs exported successfully!");
     } catch (error) {
       console.error("❌ Failed to export audit logs:", error);
-      alert("Failed to export audit logs. Please try again.");
+      notify.error("Failed to export audit logs. Please try again.");
     }
   };
 

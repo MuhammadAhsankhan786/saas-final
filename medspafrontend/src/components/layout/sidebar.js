@@ -13,6 +13,7 @@ import {
   HelpCircle,
   Home,
   Stethoscope,
+  User,
   LogOut,
   Sparkles,
 } from "lucide-react";
@@ -263,33 +264,19 @@ export function Sidebar({ currentPage, onPageChange }) {
 
   // Strict admin UI isolation: show only allowed modules and children (READ-ONLY ACCESS)
   if (user.role === "admin") {
+    // Strict oversight-only menu for admin
     const allowedTopLevel = new Set([
       "dashboard",
-      "appointments",
-      "clients",
-      "payments",
-      "inventory",
       "reports",
       "compliance",
       "settings",
-      // Explicitly EXCLUDE: treatments (consents, notes, photos)
     ]);
 
     const allowedChildrenByParent = {
-      // Appointments: Only "All Appointments" view (no calendar, no booking)
-      "appointments": new Set(["appointments/list"]),
-      // Clients: Only view list (no add/edit)
-      "clients": new Set(["clients/list"]),
-      // Payments: Only payment history (no POS, no packages)
-      "payments": new Set(["payments/history"]),
-      // Inventory: Only view products and alerts (read-only)
-      "inventory": new Set(["inventory/products", "inventory/alerts"]),
-      // Reports: All allowed (read-only)
       "reports": new Set(["reports/revenue", "reports/clients", "reports/staff"]),
-      // Compliance: Only audit log and alerts view (read-only)
       "compliance": new Set(["compliance/audit", "compliance/alerts"]),
-      // Settings: Only profile view (no staff management, no business settings - read-only)
-      "settings": new Set(["settings/profile"]),
+      // Settings will have no children for admin; Profile exposed as separate item below
+      "settings": new Set([]),
     };
 
     filteredNavItems = navigationItems
@@ -302,6 +289,15 @@ export function Sidebar({ currentPage, onPageChange }) {
           : [];
         return { ...item, children: prunedChildren };
       });
+
+    // Add standalone Profile entry per RBAC spec
+    filteredNavItems.push({
+      id: "profile",
+      label: "Profile",
+      icon: User,
+      roles: ["admin"],
+      isDirectLink: true,
+    });
   }
 
   // Provider role UI isolation: show only provider-accessible modules

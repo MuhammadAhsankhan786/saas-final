@@ -395,15 +395,15 @@ export function StockAlerts({ onPageChange }) {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getAlertTypeBadgeVariant(alert.alert_type)}>
-                          {alert.alert_type.replace("-", " ")}
+                        <Badge variant={getAlertTypeBadgeVariant(alert.alert_type || 'unknown')}>
+                          {(alert.alert_type || 'unknown').replace(/-/g, ' ')}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
-                          {getAlertIcon(alert.alert_type, alert.priority)}
-                          <Badge variant={getPriorityBadgeVariant(alert.priority)}>
-                            {alert.priority.charAt(0).toUpperCase() + alert.priority.slice(1)}
+                          {getAlertIcon(alert.alert_type || 'unknown', alert.priority || 'low')}
+                          <Badge variant={getPriorityBadgeVariant(alert.priority || 'low')}>
+                            {(alert.priority || 'low').charAt(0).toUpperCase() + (alert.priority || 'low').slice(1)}
                           </Badge>
                         </div>
                       </TableCell>
@@ -549,16 +549,16 @@ export function StockAlerts({ onPageChange }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-muted rounded-lg">
                   <div>
                     <div className="text-sm text-muted-foreground">Alert Type</div>
-                    <Badge variant={getAlertTypeBadgeVariant(selectedAlert.alert_type)}>
-                      {selectedAlert.alert_type.replace("-", " ")}
+                    <Badge variant={getAlertTypeBadgeVariant(selectedAlert.alert_type || 'unknown')}>
+                      {(selectedAlert.alert_type || 'unknown').replace(/-/g, ' ')}
                     </Badge>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Priority</div>
                     <div className="flex items-center space-x-2">
-                      {getAlertIcon(selectedAlert.alert_type, selectedAlert.priority)}
-                      <Badge variant={getPriorityBadgeVariant(selectedAlert.priority)}>
-                        {selectedAlert.priority.charAt(0).toUpperCase() + selectedAlert.priority.slice(1)}
+                      {getAlertIcon(selectedAlert.alert_type || 'unknown', selectedAlert.priority || 'low')}
+                      <Badge variant={getPriorityBadgeVariant(selectedAlert.priority || 'low')}>
+                        {(selectedAlert.priority || 'low').charAt(0).toUpperCase() + (selectedAlert.priority || 'low').slice(1)}
                       </Badge>
                     </div>
                   </div>

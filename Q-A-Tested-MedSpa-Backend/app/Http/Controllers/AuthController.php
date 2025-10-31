@@ -47,13 +47,23 @@ class AuthController extends Controller
     public function me()
     {
         try {
-            return response()->json(auth('api')->user());
+            $user = auth('api')->user();
+
+            if (!$user) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
+
+            return response()->json($user);
         } catch (\PHPOpenSourceSaver\JWTAuth\Exceptions\TokenExpiredException $e) {
             return response()->json(['error' => 'Token expired'], 401);
         } catch (\PHPOpenSourceSaver\JWTAuth\Exceptions\TokenInvalidException $e) {
             return response()->json(['error' => 'Token invalid'], 401);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+        } catch (\PHPOpenSourceSaver\JWTAuth\Exceptions\JWTException $e) {
+            // Covers cases like token absent/could not be parsed
+            return response()->json(['error' => 'Unauthorized'], 401);
+        } catch (\Throwable $e) {
+            // Avoid leaking internals; normalize to 401 for auth-related failures
+            return response()->json(['error' => 'Unauthorized'], 401);
         }
     }
 

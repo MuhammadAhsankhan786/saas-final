@@ -53,6 +53,7 @@ import {
   Cell,
 } from "recharts";
 import { getClientRetentionReport } from "@/lib/api";
+import { notify } from "@/lib/toast";
 
 // Chart colors
 const COLORS = ['#00A8E8', '#FF6B6B', '#4ECDC4', '#45B7D1'];
@@ -122,7 +123,7 @@ export function ClientAnalytics({ onPageChange }) {
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        alert("Please log in to download reports");
+        notify.error("Please log in to download reports");
         return;
       }
 
@@ -148,9 +149,10 @@ export function ClientAnalytics({ onPageChange }) {
       
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      notify.success("Client analytics report downloaded successfully!");
     } catch (error) {
       console.error("Error downloading client analytics report:", error);
-      alert("Failed to generate PDF. Please try again.");
+      notify.error("Failed to generate PDF. Please try again.");
     }
   };
 

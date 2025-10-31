@@ -31,7 +31,7 @@ class DatabaseSeeder extends Seeder
             AdminDashboardSeeder::class,
             ProviderSeeder::class,
             ClientDataSeeder::class,
-            TestDataSeeder::class,
+            // TestDataSeeder::class, // Temporarily disabled due to staff_id column issue
             ComplianceAlertsTableSeeder::class,
         ]);
 

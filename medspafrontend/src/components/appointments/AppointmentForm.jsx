@@ -178,14 +178,19 @@ export default function AppointmentForm({ appointment = null, editingAppointment
     if (!isValidStatus(formData.status))
       return setError("Invalid appointment status.");
 
+    const coerceOptionalId = (value) =>
+      value === "none" || value === "null" || value === "" || value == null ? null : Number(value);
+
     const payload = formatAppointmentForAPI({
       ...formData,
       start_time: startTime,
       end_time: endTime,
-      provider_id: formData.provider_id === "none" ? null : formData.provider_id,
-      service_id: formData.service_id === "none" ? null : formData.service_id,
-      package_id: formData.package_id === "none" ? null : formData.package_id,
+      provider_id: coerceOptionalId(formData.provider_id),
+      service_id: coerceOptionalId(formData.service_id),
+      package_id: coerceOptionalId(formData.package_id),
     });
+
+    console.log("📤 Sending appointment payload:", payload);
 
     try {
       setLoading(true);
@@ -195,12 +200,33 @@ export default function AppointmentForm({ appointment = null, editingAppointment
       } else {
         await createAppointment(payload);
         notify.success("Appointment created successfully");
+        // For Reception role, trigger in-app refresh of the appointments list without page reload
+        if (user?.role === "reception" && typeof window !== "undefined") {
+          try {
+            const event = new CustomEvent("refresh-appointments");
+            window.dispatchEvent(event);
+          } catch (_) {}
+        }
       }
       if (onSuccess) onSuccess();
       if (onClose) onClose(); // Close modal if editing in modal
     } catch (err) {
-      console.error(err);
-      const errorMessage = err.message || "Something went wrong while saving appointment.";
+      console.error("Appointment creation error:", err);
+      
+      // Extract validation errors if available
+      let errorMessage = err.message || "Something went wrong while saving appointment.";
+      
+      // Check if it's a validation error with details
+      if (err.response?.data?.errors) {
+        const validationErrors = err.response.data.errors;
+        const errorList = Object.entries(validationErrors)
+          .map(([field, messages]) => `${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`)
+          .join('; ');
+        errorMessage = `Validation failed: ${errorList}`;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+      
       setError(errorMessage);
       notify.error(errorMessage);
     } finally {
@@ -299,7 +325,9 @@ export default function AppointmentForm({ appointment = null, editingAppointment
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No Provider</SelectItem>
-                {users.filter(user => user.role === "provider").map((user) => (
+                {users
+                  .filter(u => (u && (u.role ? u.role === "provider" : true)))
+                  .map((user) => (
                   <SelectItem key={user.id} value={String(user.id)}>
                     {user.name}
                   </SelectItem>

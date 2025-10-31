@@ -311,14 +311,14 @@ export function ProfileSettings({ onPageChange }) {
           <div className="flex items-center space-x-6">
             <div className="relative">
               <div 
-                className="w-24 h-24 bg-muted rounded-full flex items-center justify-center cursor-pointer hover:bg-muted/80 transition-colors"
+                className="w-24 h-24 bg-muted rounded-full flex items-center justify-center cursor-pointer hover:bg-muted/80 transition-colors overflow-hidden ring-1 ring-border"
                 onClick={handlePhotoClick}
               >
                 {profileData.profile_image ? (
                   <img 
                     src={profileData.profile_image} 
                     alt="Profile" 
-                    className="w-24 h-24 rounded-full object-cover"
+                    className="w-full h-full rounded-full object-contain object-center p-0.5"
                   />
                 ) : (
                   <User className="h-12 w-12 text-muted-foreground" />

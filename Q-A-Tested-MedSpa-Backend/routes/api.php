@@ -96,6 +96,8 @@ Route::middleware('auth:api')->group(function () {
         // 📦 Inventory - View Only
         Route::get('products', [ProductController::class, 'index']);
         Route::get('products/{product}', [ProductController::class, 'show']);
+        Route::get('products/pdf', [ProductController::class, 'generateInventoryPDF']);
+        Route::get('inventory/pdf', [ProductController::class, 'generateInventoryPDF']); // Alias for backward compatibility
         Route::get('stock-notifications', [StockNotificationController::class, 'index']);
         
         // Stock Alerts - View Only
@@ -167,6 +169,7 @@ Route::middleware('auth:api')->group(function () {
         // ✅ Inventory: View only for all staff (no create/update/delete)
         Route::get('products', [ProductController::class, 'index']);
         Route::get('products/{product}', [ProductController::class, 'show']);
+        Route::get('products/pdf', [ProductController::class, 'generateInventoryPDF']);
         Route::get('stock-notifications', [StockNotificationController::class, 'index']);
 
         // ✅ Compliance Alerts - View only for providers

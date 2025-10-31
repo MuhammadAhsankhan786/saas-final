@@ -55,12 +55,19 @@ class AuditLogController extends Controller
 
             $logs = $query->orderBy('created_at', 'desc')->paginate($request->per_page ?? 50);
 
-            return response()->json($logs);
+            return response()->json([
+                'success' => true,
+                'data' => $logs
+            ], 200);
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error fetching audit logs', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch audit logs',
-                'error' => $e->getMessage()
+                'data' => []
             ], 500);
         }
     }

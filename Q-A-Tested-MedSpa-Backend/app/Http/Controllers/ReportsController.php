@@ -145,7 +145,10 @@ class ReportsController extends Controller
             return $this->exportRevenueCsv($revenue, $response['summary']);
         }
 
-        return response()->json($response);
+        return response()->json([
+            'success' => true,
+            'data' => $response
+        ], 200);
     }
 
     /**
@@ -262,18 +265,21 @@ class ReportsController extends Controller
         ];
 
         return response()->json([
-            'period' => $period,
-            'metrics' => [
-                'total_clients' => $totalClients,
-                'active_clients' => $activeClients,
-                'new_clients' => $newClients,
-                'returning_clients' => $returningClients,
-                'retention_rate' => round($retentionRate, 2),
-            ],
-            'growthData' => $growthData,
-            'retentionData' => $retentionData,
-            'demographicsData' => $demographicsData,
-        ]);
+            'success' => true,
+            'data' => [
+                'period' => $period,
+                'metrics' => [
+                    'total_clients' => $totalClients,
+                    'active_clients' => $activeClients,
+                    'new_clients' => $newClients,
+                    'returning_clients' => $returningClients,
+                    'retention_rate' => round($retentionRate, 2),
+                ],
+                'growthData' => $growthData,
+                'retentionData' => $retentionData,
+                'demographicsData' => $demographicsData,
+            ]
+        ], 200);
     }
 
     /**

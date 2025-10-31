@@ -36,6 +36,7 @@ import {
   LineChart,
   Loader2,
 } from "lucide-react";
+import { notify } from "@/lib/toast";
 import {
   XAxis,
   YAxis,
@@ -132,7 +133,7 @@ export function RevenueReports({ onPageChange }) {
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        alert("Please log in to download reports");
+        notify.error("Please log in to download reports");
         return;
       }
 
@@ -158,9 +159,10 @@ export function RevenueReports({ onPageChange }) {
       
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      notify.success("Revenue report downloaded successfully!");
     } catch (error) {
       console.error("Error downloading revenue report:", error);
-      alert("Failed to generate PDF. Please try again.");
+      notify.error("Failed to generate PDF. Please try again.");
     }
   };
 
