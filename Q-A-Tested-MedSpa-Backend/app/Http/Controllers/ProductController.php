@@ -136,34 +136,50 @@ class ProductController extends Controller
     // Generate Inventory Report PDF
     public function generateInventoryPDF(Request $request)
     {
-        // Get all products with location
-        $products = Product::with('location')->get();
-        
-        // Calculate inventory statistics
-        $totalProducts = $products->count();
-        $activeProducts = $products->where('active', true)->count();
-        $lowStockProducts = $products->where('current_stock', '<=', 'minimum_stock')->count();
-        $totalValue = $products->sum(function($product) {
-            return $product->current_stock * $product->price;
-        });
-        
-        // Group by category
-        $categoryBreakdown = $products->groupBy('category')->map(function($categoryProducts, $category) {
-            return [
-                'category' => $category ?: 'Uncategorized',
-                'count' => $categoryProducts->count(),
-                'total_value' => $categoryProducts->sum(function($product) {
-                    return $product->current_stock * $product->price;
-                }),
-                'avg_price' => $categoryProducts->avg('price')
-            ];
-        })->sortByDesc('total_value');
+        try {
+            // Get all products with location
+            $products = Product::with('location')->get();
+            
+            // Calculate inventory statistics
+            $totalProducts = $products->count();
+            $activeProducts = $products->where('active', true)->count();
+            // Use low_stock_threshold if available, otherwise use minimum_stock
+            $lowStockProducts = $products->filter(function($product) {
+                $threshold = $product->low_stock_threshold ?? $product->minimum_stock ?? 0;
+                return $product->current_stock <= $threshold;
+            })->count();
+            $totalValue = $products->sum(function($product) {
+                return $product->current_stock * $product->price;
+            });
+            
+            // Group by category
+            $categoryBreakdown = $products->groupBy('category')->map(function($categoryProducts, $category) {
+                return [
+                    'category' => $category ?: 'Uncategorized',
+                    'count' => $categoryProducts->count(),
+                    'total_value' => $categoryProducts->sum(function($product) {
+                        return $product->current_stock * $product->price;
+                    }),
+                    'avg_price' => $categoryProducts->avg('price')
+                ];
+            })->sortByDesc('total_value');
 
-        $pdf = PDF::loadView('inventory.report', compact(
-            'products', 'totalProducts', 'activeProducts', 'lowStockProducts', 
-            'totalValue', 'categoryBreakdown'
-        ));
-        
-        return $pdf->download('inventory-report.pdf');
+            $pdf = PDF::loadView('inventory.report', compact(
+                'products', 'totalProducts', 'activeProducts', 'lowStockProducts', 
+                'totalValue', 'categoryBreakdown'
+            ));
+            
+            return $pdf->download('inventory-report.pdf');
+        } catch (\Exception $e) {
+            Log::error('Failed to generate inventory PDF', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to generate PDF: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }
