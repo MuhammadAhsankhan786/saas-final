@@ -112,12 +112,12 @@ export default function ClientDashboard({ onPageChange }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Welcome back, Jessica!</h1>
           <p className="text-muted-foreground">Your wellness journey continues</p>
         </div>
-        <Button onClick={() => onPageChange('appointments/book')}>
+        <Button onClick={() => onPageChange('appointments/book')} className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" /> Book Appointment
         </Button>
       </div>
@@ -172,7 +172,7 @@ export default function ClientDashboard({ onPageChange }) {
       </div>
 
       {/* Upcoming Appointments */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Upcoming Appointments</CardTitle>
@@ -231,7 +231,7 @@ export default function ClientDashboard({ onPageChange }) {
       </div>
 
       {/* Recent Treatments & Documents */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Treatments */}
         <Card>
           <CardHeader>

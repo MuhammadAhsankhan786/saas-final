@@ -184,8 +184,8 @@ export function AdminDashboard({ onPageChange }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pl-14 sm:pl-0">
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-foreground">
             Admin Dashboard
           </h1>
@@ -195,7 +195,7 @@ export function AdminDashboard({ onPageChange }) {
         </div>
         <Button
           onClick={() => onPageChange("appointments/list")}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
         >
           <Calendar className="mr-2 h-4 w-4" /> View Appointments
         </Button>
@@ -293,7 +293,7 @@ export function AdminDashboard({ onPageChange }) {
       </div>
 
       {/* Charts + Top Services */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Revenue Chart */}
         <Card className="bg-card border-border">
           <CardHeader>
@@ -371,7 +371,7 @@ export function AdminDashboard({ onPageChange }) {
       </div>
 
       {/* Quick Actions + Recent Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Quick Actions */}
         <Card className="bg-card border-border">
           <CardHeader>

@@ -280,13 +280,13 @@ export function AppointmentList({ onPageChange }) {
       {dialog}
       <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           {!isAdmin && (
             <Button
               variant="outline"
               onClick={() => onPageChange("appointments/calendar")}
-              className="border-border hover:bg-primary/5"
+              className="border-border hover:bg-primary/5 w-full sm:w-auto"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Calendar
@@ -300,7 +300,7 @@ export function AppointmentList({ onPageChange }) {
         {!isAdmin && (
           <Button
             onClick={() => onPageChange("appointments/book")}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
           >
             <Calendar className="mr-2 h-4 w-4" />
             New Appointment
@@ -318,7 +318,7 @@ export function AppointmentList({ onPageChange }) {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2">
+            <div className="md:col-span-2 lg:col-span-2">
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input

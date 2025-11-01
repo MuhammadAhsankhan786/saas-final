@@ -8,6 +8,19 @@
   background-color: var(--background); /* bg-background */
 }
 
+/* Responsive: Mobile and Tablet - stack layout */
+@media (max-width: 1024px) {
+  .appContainer {
+    grid-template-columns: 1fr; /* Full width on tablet */
+  }
+}
+
+/* Responsive: Mobile - ensure full width */
+@media (max-width: 768px) {
+  .appContainer {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* Main scrollable area */
 .mainArea {
@@ -18,6 +31,13 @@
 /* Content padding */
 .contentPadding {
   padding: 1.5rem; /* p-6 */
+}
+
+/* Responsive: Mobile - reduce padding */
+@media (max-width: 768px) {
+  .contentPadding {
+    padding: 1rem; /* p-4 */
+  }
 }
 
 

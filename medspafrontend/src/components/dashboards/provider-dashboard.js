@@ -139,7 +139,7 @@ export function ProviderDashboard({ onPageChange }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Provider Dashboard</h1>
           <p className="text-muted-foreground">
@@ -214,7 +214,7 @@ export function ProviderDashboard({ onPageChange }) {
       </div>
 
       {/* Today's Schedule + Pending Consents */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Today's Schedule</CardTitle>
@@ -354,7 +354,7 @@ export function ProviderDashboard({ onPageChange }) {
           <CardDescription>Common provider tasks</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Button
               variant="outline"
               className="h-20 flex-col space-y-2"

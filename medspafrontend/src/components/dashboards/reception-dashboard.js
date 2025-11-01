@@ -194,14 +194,17 @@ export default function ReceptionDashboard({ onPageChange }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Reception Dashboard</h1>
-            <p className="text-muted-foreground">
-              {formatDate(new Date())}
-            </p>
-          </div>
-        <Button onClick={() => onPageChange("appointments/book")}>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 flex-1 min-w-0">
+          <h1 className="text-2xl font-bold whitespace-nowrap">Reception Dashboard</h1>
+          <p className="text-muted-foreground whitespace-nowrap">
+            {formatDate(new Date())}
+          </p>
+        </div>
+        <Button 
+          onClick={() => onPageChange("appointments/book")} 
+          className="w-full sm:w-auto shrink-0"
+        >
           <Plus className="mr-2 h-4 w-4" /> Book Appointment
         </Button>
       </div>
@@ -254,7 +257,7 @@ export default function ReceptionDashboard({ onPageChange }) {
       </div>
 
       {/* Calendar Overview */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Calendar Overview</CardTitle>
@@ -396,7 +399,7 @@ export default function ReceptionDashboard({ onPageChange }) {
           <CardDescription>Common reception tasks</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Button
               variant="outline"
               className="h-20 flex-col space-y-2"

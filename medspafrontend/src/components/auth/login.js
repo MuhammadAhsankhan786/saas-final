@@ -8,7 +8,7 @@ import { Label } from "../ui/label";
 import { Alert, AlertDescription } from "../ui/alert";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { Loader2, Sparkles, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 
 export function Login() {
   const [email, setEmail] = useState("");
@@ -61,11 +61,11 @@ export function Login() {
       <div className="w-full max-w-md space-y-6">
         {/* Logo / Header */}
         <div className="text-center space-y-2">
-          <div className="flex items-center justify-center space-x-2">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-              <Sparkles className="w-6 h-6 text-primary-foreground" />
+          <div className="flex items-center justify-center space-x-3">
+            <div className="w-14 h-14 rounded-xl flex items-center justify-center overflow-hidden shadow-md" style={{ background: 'linear-gradient(to right, #6b21a8, #14b8a6)' }}>
+              <span className="text-black font-bold text-xs leading-tight tracking-tight">PULSE</span>
             </div>
-            <h1 className="text-3xl font-bold text-primary">MediSpa</h1>
+            <h1 className="text-3xl font-bold text-primary">PULSE</h1>
           </div>
           <p className="text-muted-foreground">
             Welcome to your wellness management platform

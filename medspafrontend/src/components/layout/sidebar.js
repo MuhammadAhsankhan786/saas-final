@@ -15,11 +15,13 @@ import {
   Stethoscope,
   User,
   LogOut,
-  Sparkles,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { Button } from "../ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { useIsMobile } from "../ui/use-mobile";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "../ui/sheet";
+import { Menu } from "lucide-react";
 
 // Helper to get user avatar URL from user object (checks both avatar and profile_image)
 const getUserAvatarUrl = (user) => {
@@ -255,6 +257,7 @@ const navigationItems = [
 
 export function Sidebar({ currentPage, onPageChange }) {
   const { user, logout } = useAuth();
+  const isMobile = useIsMobile();
 
   if (!user) return null;
 
@@ -429,16 +432,17 @@ export function Sidebar({ currentPage, onPageChange }) {
     ];
   }
 
-  return (
-    <div className="w-64 h-screen bg-sidebar border-r border-sidebar-border flex flex-col">
+  // Sidebar content component (reusable for desktop and mobile)
+  const SidebarContent = () => (
+    <>
       {/* Logo */}
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-primary-foreground" />
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden shadow-sm" style={{ background: 'linear-gradient(to right, #6b21a8, #14b8a6)' }}>
+            <span className="text-black font-bold text-[10px] leading-tight tracking-tight">PULSE</span>
           </div>
           <div>
-            <h1 className="font-bold text-lg text-primary">MediSpa</h1>
+            <h1 className="font-bold text-lg text-primary">PULSE</h1>
             <p className="text-xs text-muted-foreground">Management Platform</p>
           </div>
         </div>
@@ -482,6 +486,12 @@ export function Sidebar({ currentPage, onPageChange }) {
                 }`}
                 data-nav-item={item.label}
                 onClick={() => {
+                  // Close mobile drawer on navigation
+                  if (isMobile) {
+                    const event = new CustomEvent('closeSidebar');
+                    window.dispatchEvent(event);
+                  }
+                  
                   // For direct links (like client appointments), navigate directly
                   if (item.isDirectLink) {
                     onPageChange(item.id);
@@ -527,6 +537,10 @@ export function Sidebar({ currentPage, onPageChange }) {
                           }`}
                           data-nav-item={child.label}
                           onClick={() => {
+                            if (isMobile) {
+                              const event = new CustomEvent('closeSidebar');
+                              window.dispatchEvent(event);
+                            }
                             onPageChange(child.id);
                             console.log("✅ Sidebar navigation working — route changed successfully!");
                           }}
@@ -554,6 +568,37 @@ export function Sidebar({ currentPage, onPageChange }) {
           Sign Out
         </Button>
       </div>
+    </>
+  );
+
+  // Mobile: Use Sheet drawer
+  if (isMobile) {
+    return (
+      <Sheet>
+        <SheetTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="fixed top-4 left-4 z-50 lg:hidden"
+          >
+            <Menu className="h-6 w-6" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="w-64 p-0 bg-sidebar border-sidebar-border">
+          <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+          <SheetDescription className="sr-only">Main navigation menu for MediSpa platform</SheetDescription>
+          <div className="h-screen flex flex-col">
+            <SidebarContent />
+          </div>
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  // Desktop: Fixed sidebar
+  return (
+    <div className="hidden lg:flex w-64 h-screen bg-sidebar border-r border-sidebar-border flex-col">
+      <SidebarContent />
     </div>
   );
 }

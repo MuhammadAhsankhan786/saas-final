@@ -425,27 +425,27 @@ export function PaymentPOS({ onPageChange }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-1 min-w-0">
           <Button
             variant="outline"
             onClick={() => onPageChange("dashboard")}
-            className="border-border hover:bg-primary/5"
+            className="border-border hover:bg-primary/5 w-full sm:w-auto shrink-0"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Dashboard
           </Button>
-          <div>
+          <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold text-foreground">Point of Sale</h1>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground mt-1">
               Process payments and manage transactions
             </p>
           </div>
         </div>
-        <div className="flex space-x-2">
+        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 w-full sm:w-auto shrink-0">
           <Button
             variant="outline"
-            className="border-border hover:bg-primary/5 hover:border-primary/30"
+            className="border-border hover:bg-primary/5 hover:border-primary/30 w-full sm:w-auto"
             onClick={() => {
               // Navigate to Receipts page - shows only completed payments with receipt actions
               console.log('🔄 Navigating to Receipts page...');
@@ -457,7 +457,7 @@ export function PaymentPOS({ onPageChange }) {
           </Button>
           <Button
             variant="outline"
-            className="border-border hover:bg-primary/5 hover:border-primary/30"
+            className="border-border hover:bg-primary/5 hover:border-primary/30 w-full sm:w-auto"
             onClick={() => {
               // Navigate to Transaction History page - shows all payment transactions
               console.log('🔄 Navigating to Transaction History page...');
@@ -472,7 +472,7 @@ export function PaymentPOS({ onPageChange }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Services & Products */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 order-2 lg:order-1">
           <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="text-foreground">Services & Products</CardTitle>
@@ -499,7 +499,7 @@ export function PaymentPOS({ onPageChange }) {
 
                 {/* Services Tab */}
                 <TabsContent value="services" className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {services.map((service) => (
                       <div
                         key={service.id}
@@ -533,7 +533,7 @@ export function PaymentPOS({ onPageChange }) {
 
                 {/* Products Tab */}
                 <TabsContent value="products" className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {products.map((product) => (
                       <div
                         key={product.id}
@@ -565,7 +565,7 @@ export function PaymentPOS({ onPageChange }) {
         </div>
 
         {/* Sidebar */}
-        <div className="space-y-6">
+        <div className="space-y-6 order-1 lg:order-2">
           {/* Client Information */}
           <Card>
             <CardHeader>

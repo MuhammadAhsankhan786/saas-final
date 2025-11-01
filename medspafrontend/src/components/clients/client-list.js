@@ -241,13 +241,13 @@ export function ClientList({ onPageChange }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           {JSON.parse(localStorage.getItem("user") || "{}").role !== "admin" && (
             <Button
               variant="outline"
               onClick={() => onPageChange("dashboard")}
-              className="border-border hover:bg-primary/5"
+              className="border-border hover:bg-primary/5 w-full sm:w-auto"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Dashboard
@@ -265,7 +265,7 @@ export function ClientList({ onPageChange }) {
         {JSON.parse(localStorage.getItem("user") || "{}").role !== "admin" && (
           <Button
             onClick={openCreateModal}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
           >
             <UserPlus className="mr-2 h-4 w-4" /> Add Client
           </Button>
@@ -365,7 +365,8 @@ export function ClientList({ onPageChange }) {
 
         {/* Table */}
         <CardContent>
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Client</TableHead>
@@ -494,6 +495,7 @@ export function ClientList({ onPageChange }) {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
