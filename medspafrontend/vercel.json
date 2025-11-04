@@ -1,8 +1,8 @@
 {
-  "projects": [
+  "rewrites": [
     {
-      "src": "medspafrontend/",
-      "use": "@vercel/next"
+      "source": "/api/:path*",
+      "destination": "https://your-backend-domain.com/:path*"
     }
   ]
 }
