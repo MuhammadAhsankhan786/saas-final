@@ -2,10 +2,34 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 
-const AuthContext = createContext();
+// Default context value for SSR safety
+const defaultAuthContext = {
+  user: null,
+  login: async () => {
+    throw new Error("AuthProvider not mounted");
+  },
+  logout: () => {
+    throw new Error("AuthProvider not mounted");
+  },
+  isAuthenticated: false,
+  loading: true,
+};
+
+const AuthContext = createContext(defaultAuthContext);
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  // During SSR, context might be undefined if component is rendered outside provider
+  // Return default context to prevent destructuring errors
+  if (context === undefined) {
+    if (typeof window === "undefined") {
+      // SSR: return default context
+      return defaultAuthContext;
+    }
+    // Client-side: throw error if context is truly missing
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
 }
 
 export function AuthProvider({ children }) {
