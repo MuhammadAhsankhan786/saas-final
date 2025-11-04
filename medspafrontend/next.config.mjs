@@ -3,7 +3,7 @@ import path from "path";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
-    ignoreDuringBuilds: true, // build-time errors ignore
+    ignoreDuringBuilds: true, // ignore build-time lint warnings
   },
   reactStrictMode: true,
   webpack: (config) => {
