@@ -197,22 +197,24 @@ export function ClientAnalytics({ onPageChange }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <Button
             variant="outline"
             onClick={() => onPageChange("dashboard")}
-            className="border-border hover:bg-primary/5"
+            className="border-border hover:bg-primary/5 w-full sm:w-auto"
+            size="sm"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+            <span className="hidden sm:inline">Back to Dashboard</span>
+            <span className="sm:hidden">Back</span>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Client Analytics</h1>
-            <p className="text-muted-foreground">Analyze client behavior and engagement metrics</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Client Analytics</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">Analyze client behavior and engagement metrics</p>
           </div>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 w-full sm:w-auto">
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger className="w-[150px] bg-input-background border-border">
               <SelectValue />

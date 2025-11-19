@@ -32,8 +32,10 @@ import {
   Save,
   Plus,
   Trash2,
+  Edit,
 } from "lucide-react";
-import { getBusinessSettings, updateBusinessSettings } from "@/lib/api";
+import { getBusinessSettings, updateBusinessSettings, getLocations } from "@/lib/api";
+import { notify } from "@/lib/toast";
 
 export function BusinessSettings({ onPageChange }) {
   const [businessData, setBusinessData] = useState({
@@ -73,6 +75,8 @@ export function BusinessSettings({ onPageChange }) {
     locations: [],
   });
 
+  const [locations, setLocations] = useState([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -111,7 +115,35 @@ export function BusinessSettings({ onPageChange }) {
       }
     }
     fetchSettings();
+    fetchRealLocations();
   }, []);
+
+  const fetchRealLocations = async () => {
+    try {
+      setLoadingLocations(true);
+      console.log("🔄 Fetching real locations from API for Business Settings...");
+      const response = await getLocations();
+      console.log("📥 Locations API response:", response);
+      
+      // Handle different response formats
+      let locationsArray = [];
+      if (Array.isArray(response)) {
+        locationsArray = response;
+      } else if (response && Array.isArray(response.data)) {
+        locationsArray = response.data;
+      } else if (response && response.locations && Array.isArray(response.locations)) {
+        locationsArray = response.locations;
+      }
+      
+      console.log("✅ Real locations loaded:", locationsArray.length);
+      setLocations(locationsArray);
+    } catch (err) {
+      console.error("❌ Failed to fetch locations:", err);
+      setLocations([]);
+    } finally {
+      setLoadingLocations(false);
+    }
+  };
 
   const handleInputChange = (field, value) => {
     setBusinessData(prev => ({ ...prev, [field]: value }));
@@ -227,46 +259,101 @@ export function BusinessSettings({ onPageChange }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      {/* Header - Responsive & Professional */}
+      <div className="space-y-3 sm:space-y-0">
+        {/* Mobile: Heading on top, Back button small icon */}
+        <div className="flex items-start justify-between gap-3 sm:hidden">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-foreground">Business Settings</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Configure your business information and preferences</p>
+          </div>
           <Button
-            variant="outline"
+            variant="ghost"
             onClick={() => onPageChange("dashboard")}
-            className="border-border hover:bg-primary/5"
+            className="h-8 w-8 p-0 flex-shrink-0"
+            size="icon"
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+            <ArrowLeft className="h-4 w-4" />
+            <span className="sr-only">Back to Dashboard</span>
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Business Settings</h1>
-            <p className="text-muted-foreground">Configure your business information and preferences</p>
+        </div>
+        
+        {/* Desktop: Original layout */}
+        <div className="hidden sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-row items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => onPageChange("dashboard")}
+              className="border-border hover:bg-primary/5"
+              size="sm"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Business Settings</h1>
+              <p className="text-sm text-muted-foreground">Configure your business information and preferences</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            {isEditing ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditing(false)}
+                  className="border-border hover:bg-primary/5"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={() => setIsEditing(true)}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                Edit Settings
+              </Button>
+            )}
           </div>
         </div>
-        <div className="flex items-center space-x-2">
+        
+        {/* Mobile: Action buttons below heading */}
+        <div className="sm:hidden">
           {isEditing ? (
-            <>
+            <div className="flex gap-2">
               <Button
                 variant="outline"
                 onClick={() => setIsEditing(false)}
-                className="border-border hover:bg-primary/5"
+                className="border-border hover:bg-primary/5 flex-1"
+                size="sm"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground flex-1"
+                size="sm"
               >
                 <Save className="mr-2 h-4 w-4" />
-                {isSaving ? "Saving..." : "Save Changes"}
+                {isSaving ? "Saving..." : "Save"}
               </Button>
-            </>
+            </div>
           ) : (
             <Button
               onClick={() => setIsEditing(true)}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
+              size="sm"
             >
+              <Edit className="mr-2 h-4 w-4" />
               Edit Settings
             </Button>
           )}
@@ -607,108 +694,47 @@ export function BusinessSettings({ onPageChange }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {businessData.locations.map((location) => (
-            <div key={location.id} className="p-4 border border-border rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium text-foreground">{location.name}</h4>
-                <div className="flex items-center space-x-2">
-                  <Badge variant={location.isActive ? "outline" : "secondary"}>
-                    {location.isActive ? "Active" : "Inactive"}
-                  </Badge>
-                  {isEditing && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleRemoveLocation(location.id)}
-                      className="border-border hover:bg-destructive/5 hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+          {loadingLocations ? (
+            <div className="text-center py-4 text-muted-foreground">
+              Loading locations from database...
+            </div>
+          ) : locations.length === 0 ? (
+            <div className="text-center py-4 text-muted-foreground">
+              No locations found. Add locations via the Locations page.
+            </div>
+          ) : (
+            locations.map((location) => (
+              <div key={location.id} className="p-4 border border-border rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-foreground">{location.name}</h4>
+                  <div className="flex items-center space-x-2">
+                    <Badge variant={location.status === 'active' ? "outline" : "secondary"}>
+                      {location.status === 'active' ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {location.address && <p>{location.address}</p>}
+                  {(location.city || location.state || location.zip) && (
+                    <p>
+                      {location.city && location.city}
+                      {location.city && location.state && ", "}
+                      {location.state && location.state}
+                      {location.zip && ` ${location.zip}`}
+                    </p>
                   )}
+                  {location.phone && <p>{location.phone}</p>}
                 </div>
               </div>
-              <div className="text-sm text-muted-foreground">
-                <p>{location.address}</p>
-                <p>{location.city}, {location.state} {location.zip_code}</p>
-                <p>{location.phone}</p>
-              </div>
-            </div>
-          ))}
-
-          {isEditing && (
-            <div className="p-4 border-2 border-dashed border-border rounded-lg">
-              <h4 className="font-medium text-foreground mb-4">Add New Location</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="locationName">Location Name</Label>
-                  <Input
-                    id="locationName"
-                    value={newLocation.name}
-                    onChange={(e) => handleLocationInputChange("name", e.target.value)}
-                    placeholder="Enter location name"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="locationPhone">Phone</Label>
-                  <Input
-                    id="locationPhone"
-                    value={newLocation.phone}
-                    onChange={(e) => handleLocationInputChange("phone", e.target.value)}
-                    placeholder="Enter phone number"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="locationAddress">Address</Label>
-                  <Input
-                    id="locationAddress"
-                    value={newLocation.address}
-                    onChange={(e) => handleLocationInputChange("address", e.target.value)}
-                    placeholder="Enter address"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="locationCity">City</Label>
-                  <Input
-                    id="locationCity"
-                    value={newLocation.city}
-                    onChange={(e) => handleLocationInputChange("city", e.target.value)}
-                    placeholder="Enter city"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="locationState">State</Label>
-                  <Input
-                    id="locationState"
-                    value={newLocation.state}
-                    onChange={(e) => handleLocationInputChange("state", e.target.value)}
-                    placeholder="Enter state"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="locationZip">ZIP Code</Label>
-                  <Input
-                    id="locationZip"
-                    value={newLocation.zip_code}
-                    onChange={(e) => handleLocationInputChange("zip_code", e.target.value)}
-                    placeholder="Enter ZIP code"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-              </div>
-              <Button
-                onClick={handleAddLocation}
-                className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add Location
-              </Button>
-            </div>
+            ))
           )}
+
+          <div className="mt-4 p-4 bg-muted/30 border border-border rounded-lg">
+            <p className="text-sm text-muted-foreground">
+              💡 <strong>Note:</strong> To add, edit, or delete locations, please use the{" "}
+              <strong>Locations</strong> page from the sidebar menu.
+            </p>
+          </div>
         </CardContent>
       </Card>
         </>

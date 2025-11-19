@@ -33,29 +33,6 @@ export function Login() {
     }
   };
 
-  const demoAccounts = [
-    {
-      email: "admin@medispa.com",
-      role: "Admin Dashboard",
-      description: "View KPIs, manage staff, locations",
-    },
-    {
-      email: "provider@medispa.com",
-      role: "Provider Dashboard",
-      description: "Today's appointments, treatment notes",
-    },
-    {
-      email: "reception@medispa.com",
-      role: "Reception Dashboard",
-      description: "Book appointments, check-ins",
-    },
-    {
-      email: "client@medispa.com",
-      role: "Client Portal",
-      description: "My appointments, documents, payments",
-    },
-  ];
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-6">
@@ -143,58 +120,16 @@ export function Login() {
                   "Sign In"
                 )}
               </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Demo Accounts */}
-        <Card className="bg-card border border-border">
-          <CardHeader>
-            <CardTitle className="text-lg text-foreground">
-              Demo Accounts
-            </CardTitle>
-            <CardDescription>
-              Use these accounts to explore different user roles (password:
-              <span className="font-semibold"> demo123</span>)
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {demoAccounts.map((account) => (
-              <div
-                key={account.email}
-                className="p-3 border border-border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors hover:border-primary/30"
-                onClick={async () => {
-                  // Autofill and auto-login with demo credentials
-                  setEmail(account.email);
-                  setPassword("demo123");
-                  setError("");
-                  setIsLoading(true);
-                  try {
-                    // Primary attempt with demo123
-                    await login(account.email, "demo123");
-                    router.push('/');
-                  } catch (e1) {
-                    try {
-                      // Fallback some seeds use 'password'
-                      await login(account.email, "password");
-                      router.push('/');
-                    } catch (e2) {
-                      setError(e2.message || e1.message || "Login failed. Please try manually.");
-                    }
-                  } finally {
-                    setIsLoading(false);
-                  }
-                }}
-              >
-                <div className="font-medium text-sm text-foreground">
-                  {account.role}
-                </div>
-                <div className="text-xs text-muted-foreground">{account.email}</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {account.description}
-                </div>
+              
+              <div className="text-center mt-4">
+                <a
+                  href="/forgot-password"
+                  className="text-sm text-primary hover:underline"
+                >
+                  Forgot Password?
+                </a>
               </div>
-            ))}
+            </form>
           </CardContent>
         </Card>
       </div>

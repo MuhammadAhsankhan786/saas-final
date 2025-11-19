@@ -51,12 +51,13 @@ import {
   Loader2,
   Download,
 } from "lucide-react";
-import { getProducts, createProduct, updateProduct, deleteProduct, adjustStock } from "@/lib/api";
+import { getProducts, createProduct, updateProduct, deleteProduct, adjustStock, logInventoryUsage } from "@/lib/api";
 import { notify } from "@/lib/toast";
 
 export function InventoryProducts({ onPageChange }) {
   const role = JSON.parse(localStorage.getItem("user") || "{}").role;
   const isAdmin = role === "admin";
+  const isProvider = role === "provider";
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -471,10 +472,17 @@ export function InventoryProducts({ onPageChange }) {
 
       // Use role-based endpoint
       const userRole = JSON.parse(localStorage.getItem("user") || "{}").role;
+      
+      // Provider cannot export inventory PDF - read-only access
+      if (userRole === "provider") {
+        notify.error("You don't have permission to export inventory reports");
+        return;
+      }
+      
       let endpoint;
       if (userRole === "admin") {
         endpoint = "/admin/products/pdf";
-      } else if (userRole === "provider" || userRole === "reception") {
+      } else if (userRole === "reception") {
         endpoint = "/staff/products/pdf";
       } else {
         notify.error("You don't have permission to export inventory reports");
@@ -529,10 +537,176 @@ export function InventoryProducts({ onPageChange }) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+    <div className="space-y-4 sm:space-y-6">
+      {/* Create Product Dialog - Shared between desktop and mobile */}
+      {!isAdmin && (
+        <Dialog open={isCreateProductOpen} onOpenChange={setIsCreateProductOpen}>
+          <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
+            <DialogHeader>
+              <DialogTitle className="text-lg sm:text-xl">Add New Product</DialogTitle>
+              <DialogDescription className="text-sm">
+                Add a new product to your inventory
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="name">Product Name</Label>
+                  <Input
+                    id="name"
+                    value={newProduct.name}
+                    onChange={(e) => handleInputChange("name", e.target.value)}
+                    placeholder="Enter product name"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="sku">SKU</Label>
+                  <Input
+                    id="sku"
+                    value={newProduct.sku}
+                    onChange={(e) => handleInputChange("sku", e.target.value)}
+                    placeholder="Enter SKU"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="category">Category</Label>
+                  <Input
+                    id="category"
+                    value={newProduct.category}
+                    onChange={(e) => handleInputChange("category", e.target.value)}
+                    placeholder="Enter category"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="price">Price</Label>
+                  <Input
+                    id="price"
+                    type="number"
+                    step="0.01"
+                    value={newProduct.price}
+                    onChange={(e) => handleInputChange("price", e.target.value)}
+                    placeholder="0.00"
+                    className="bg-input-background border-border"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="current_stock">Stock</Label>
+                  <Input
+                    id="current_stock"
+                    type="number"
+                    value={newProduct.current_stock}
+                    onChange={(e) => handleInputChange("current_stock", e.target.value)}
+                    placeholder="0"
+                    className="bg-input-background border-border"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="location_id">Location ID</Label>
+                  <Input
+                    id="location_id"
+                    type="number"
+                    value={newProduct.location_id}
+                    onChange={(e) => handleInputChange("location_id", e.target.value)}
+                    placeholder="1"
+                    className="bg-input-background border-border"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="lot_number">Lot Number (Optional)</Label>
+                  <Input
+                    id="lot_number"
+                    value={newProduct.lot_number}
+                    onChange={(e) => handleInputChange("lot_number", e.target.value)}
+                    placeholder="Enter lot number"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="expiry_date">Expiry Date (Optional)</Label>
+                  <Input
+                    id="expiry_date"
+                    type="date"
+                    value={newProduct.expiry_date}
+                    onChange={(e) => handleInputChange("expiry_date", e.target.value)}
+                    className="bg-input-background border-border"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="low_stock_threshold">Low Stock Threshold (Optional)</Label>
+                  <Input
+                    id="low_stock_threshold"
+                    type="number"
+                    value={newProduct.low_stock_threshold}
+                    onChange={(e) => handleInputChange("low_stock_threshold", e.target.value)}
+                    placeholder="Optional"
+                    className="bg-input-background border-border"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-2 sm:space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsCreateProductOpen(false)}
+                  className="border-border hover:bg-primary/5 w-full sm:w-auto"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreateProduct}
+                  disabled={isProcessing}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="mr-2 h-4 w-4" />
+                  )}
+                  {isProcessing ? "Adding..." : "Add Product"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Header - Responsive & Professional */}
+      <div className="space-y-3 sm:space-y-0">
+        {/* Mobile: Heading on top, Back button small icon */}
+        <div className="flex items-start justify-between gap-3 sm:hidden">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-foreground">Inventory Products</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Manage product inventory and stock levels</p>
+          </div>
+          <Button
+            variant="ghost"
+            onClick={() => onPageChange("dashboard")}
+            className="h-8 w-8 p-0 flex-shrink-0"
+            size="icon"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="sr-only">Back to Dashboard</span>
+          </Button>
+        </div>
+        
+        {/* Desktop: Original layout */}
+        <div className="hidden sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-row items-center gap-4">
           <Button
             variant="outline"
             onClick={() => onPageChange("dashboard")}
@@ -543,169 +717,57 @@ export function InventoryProducts({ onPageChange }) {
           </Button>
           <div>
             <h1 className="text-2xl font-bold text-foreground">Inventory Products</h1>
-            <p className="text-muted-foreground">Manage product inventory and stock levels</p>
+              <p className="text-sm text-muted-foreground">Manage product inventory and stock levels</p>
           </div>
         </div>
-        <div className="flex space-x-2">
-          <Button
-            variant="outline"
-            onClick={handleExportInventory}
-            className="border-border hover:bg-primary/5"
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export Inventory
-          </Button>
+          <div className="flex flex-row gap-2">
+          {/* Provider cannot export inventory PDF - read-only access */}
+          {!isProvider && (
+            <Button
+              variant="outline"
+              onClick={handleExportInventory}
+              className="border-border hover:bg-primary/5"
+                size="sm"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export Inventory
+            </Button>
+          )}
           {!isAdmin && (
-          <Dialog open={isCreateProductOpen} onOpenChange={setIsCreateProductOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              <Button 
+                onClick={() => setIsCreateProductOpen(true)}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground" 
+                size="sm"
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 New Product
               </Button>
-            </DialogTrigger>
-            <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Add New Product</DialogTitle>
-                <DialogDescription>
-                  Add a new product to your inventory
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="name">Product Name</Label>
-                    <Input
-                      id="name"
-                      value={newProduct.name}
-                      onChange={(e) => handleInputChange("name", e.target.value)}
-                      placeholder="Enter product name"
-                      className="bg-input-background border-border"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="sku">SKU</Label>
-                    <Input
-                      id="sku"
-                      value={newProduct.sku}
-                      onChange={(e) => handleInputChange("sku", e.target.value)}
-                      placeholder="Enter SKU"
-                      className="bg-input-background border-border"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="category">Category</Label>
-                    <Input
-                      id="category"
-                      value={newProduct.category}
-                      onChange={(e) => handleInputChange("category", e.target.value)}
-                      placeholder="Enter category"
-                      className="bg-input-background border-border"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="price">Price</Label>
-                    <Input
-                      id="price"
-                      type="number"
-                      step="0.01"
-                      value={newProduct.price}
-                      onChange={(e) => handleInputChange("price", e.target.value)}
-                      placeholder="0.00"
-                      className="bg-input-background border-border"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="current_stock">Stock</Label>
-                    <Input
-                      id="current_stock"
-                      type="number"
-                      value={newProduct.current_stock}
-                      onChange={(e) => handleInputChange("current_stock", e.target.value)}
-                      placeholder="0"
-                      className="bg-input-background border-border"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="location_id">Location ID</Label>
-                    <Input
-                      id="location_id"
-                      type="number"
-                      value={newProduct.location_id}
-                      onChange={(e) => handleInputChange("location_id", e.target.value)}
-                      placeholder="1"
-                      className="bg-input-background border-border"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="lot_number">Lot Number (Optional)</Label>
-                    <Input
-                      id="lot_number"
-                      value={newProduct.lot_number}
-                      onChange={(e) => handleInputChange("lot_number", e.target.value)}
-                      placeholder="Enter lot number"
-                      className="bg-input-background border-border"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="expiry_date">Expiry Date (Optional)</Label>
-                    <Input
-                      id="expiry_date"
-                      type="date"
-                      value={newProduct.expiry_date}
-                      onChange={(e) => handleInputChange("expiry_date", e.target.value)}
-                      className="bg-input-background border-border"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="low_stock_threshold">Low Stock Threshold (Optional)</Label>
-                    <Input
-                      id="low_stock_threshold"
-                      type="number"
-                      value={newProduct.low_stock_threshold}
-                      onChange={(e) => handleInputChange("low_stock_threshold", e.target.value)}
-                      placeholder="Optional"
-                      className="bg-input-background border-border"
-                    />
-                  </div>
-                </div>
-
-
-                <div className="flex justify-end space-x-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsCreateProductOpen(false)}
-                    className="border-border hover:bg-primary/5"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleCreateProduct}
-                    disabled={isProcessing}
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                  >
-                    {isProcessing ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Plus className="mr-2 h-4 w-4" />
-                    )}
-                    {isProcessing ? "Adding..." : "Add Product"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+            )}
+          </div>
+        </div>
+        
+        {/* Mobile: Action buttons below heading */}
+        <div className="sm:hidden flex flex-col gap-2">
+          {!isProvider && (
+            <Button
+              variant="outline"
+              onClick={handleExportInventory}
+              className="border-border hover:bg-primary/5 w-full"
+              size="sm"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export Inventory
+            </Button>
+          )}
+          {!isAdmin && (
+            <Button 
+              onClick={() => setIsCreateProductOpen(true)}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground w-full" 
+              size="sm"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              New Product
+            </Button>
           )}
         </div>
       </div>
@@ -823,25 +885,26 @@ export function InventoryProducts({ onPageChange }) {
         </CardContent>
       </Card>
 
-      {/* Products Table */}
+      {/* Products Table - Responsive */}
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-foreground">
+          <CardTitle className="text-foreground text-lg sm:text-xl">
             Products ({filteredProducts.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <div className="inline-block min-w-full align-middle">
+              <Table className="min-w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Expiry</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="text-xs sm:text-sm">Product</TableHead>
+                  <TableHead className="text-xs sm:text-sm hidden sm:table-cell">Category</TableHead>
+                  <TableHead className="text-xs sm:text-sm">Stock</TableHead>
+                  <TableHead className="text-xs sm:text-sm hidden md:table-cell">Price</TableHead>
+                  <TableHead className="text-xs sm:text-sm hidden lg:table-cell">Expiry</TableHead>
+                  <TableHead className="text-xs sm:text-sm">Status</TableHead>
+                  <TableHead className="text-xs sm:text-sm">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -849,61 +912,65 @@ export function InventoryProducts({ onPageChange }) {
                   const status = getProductStatus(product);
                   return (
                     <TableRow key={product.id}>
-                      <TableCell>
+                      <TableCell className="text-xs sm:text-sm">
                         <div>
                           <div className="font-medium text-foreground">{product.name || "Unknown Product"}</div>
-                          <div className="text-sm text-muted-foreground">SKU: {product.sku || "N/A"}</div>
+                          <div className="text-xs text-muted-foreground sm:hidden">{product.category || "N/A"}</div>
+                          <div className="text-xs text-muted-foreground">SKU: {product.sku || "N/A"}</div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-foreground">{product.category || "N/A"}</TableCell>
-                      <TableCell>
+                      <TableCell className="text-foreground text-xs sm:text-sm hidden sm:table-cell">{product.category || "N/A"}</TableCell>
+                      <TableCell className="text-xs sm:text-sm">
                         <div>
                           <div className="font-medium text-foreground">{product.current_stock || 0} {product.unit || ""}</div>
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-xs text-muted-foreground hidden sm:block">
                             Min: {product.min_stock || 0} | Max: {product.max_stock || 0}
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-xs sm:text-sm hidden md:table-cell">
                         <div>
                           <div className="font-medium text-foreground">${(product.selling_price || 0).toLocaleString()}</div>
-                          <div className="text-sm text-muted-foreground">Cost: ${(product.cost || 0).toLocaleString()}</div>
+                          <div className="text-xs text-muted-foreground">Cost: ${(product.cost || 0).toLocaleString()}</div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-xs sm:text-sm hidden lg:table-cell">
                         <div className="flex items-center space-x-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <Calendar className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
                           <span className="text-foreground">
                             {product.expiry_date ? new Date(product.expiry_date).toLocaleDateString() : 'N/A'}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
+                      <TableCell className="text-xs sm:text-sm">
+                        <div className="flex items-center space-x-1 sm:space-x-2">
                           {getStatusIcon(status)}
-                          <Badge variant={getStatusBadgeVariant(status)}>
-                            {status.replace("-", " ")}
+                          <Badge variant={getStatusBadgeVariant(status)} className="text-xs">
+                            <span className="hidden sm:inline">{status.replace("-", " ")}</span>
+                            <span className="sm:hidden">{status.charAt(0).toUpperCase()}</span>
                           </Badge>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-1 sm:space-x-2">
                       <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleViewDetails(product)}
-                            className="border-border hover:bg-primary/5"
+                            className="border-border hover:bg-primary/5 h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-3"
                           >
-                            <Eye className="h-4 w-4" />
+                            <Eye className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">View</span>
                           </Button>
                       {!isAdmin && (
                       <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleEditProduct(product)}
-                            className="border-border hover:bg-primary/5"
+                            className="border-border hover:bg-primary/5 h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-3"
                           >
-                            <Edit className="h-4 w-4" />
+                            <Edit className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">Edit</span>
                           </Button>
                       )}
                       {!isAdmin && (
@@ -911,9 +978,10 @@ export function InventoryProducts({ onPageChange }) {
                             variant="outline"
                             size="sm"
                             onClick={() => handleRestock(product.id, 10)}
-                            className="border-border hover:bg-primary/5"
+                            className="border-border hover:bg-primary/5 h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-3 text-xs"
                           >
-                            Restock
+                            <span className="hidden sm:inline">Restock</span>
+                            <span className="sm:hidden">+</span>
                           </Button>
                       )}
                       {!isAdmin && (
@@ -921,9 +989,10 @@ export function InventoryProducts({ onPageChange }) {
                             variant="outline"
                             size="sm"
                             onClick={() => handleDeleteProduct(product.id)}
-                            className="border-border hover:bg-destructive/5 hover:text-destructive"
+                            className="border-border hover:bg-destructive/5 hover:text-destructive h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-3"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">Delete</span>
                           </Button>
                       )}
                         </div>
@@ -933,16 +1002,17 @@ export function InventoryProducts({ onPageChange }) {
                 })}
               </TableBody>
             </Table>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Product Details Dialog */}
+      {/* Product Details Dialog - Responsive */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
-            <DialogTitle>Product Details</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">Product Details</DialogTitle>
+            <DialogDescription className="text-sm">
               Complete information about this product
             </DialogDescription>
           </DialogHeader>
@@ -1070,11 +1140,11 @@ export function InventoryProducts({ onPageChange }) {
               )}
 
               {/* Actions */}
-              <div className="flex justify-end space-x-2">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-2 sm:space-x-2">
                 <Button
                   variant="outline"
                   onClick={() => setIsDetailsOpen(false)}
-                  className="border-border hover:bg-primary/5"
+                  className="border-border hover:bg-primary/5 w-full sm:w-auto"
                 >
                   Close
                 </Button>
@@ -1094,18 +1164,18 @@ export function InventoryProducts({ onPageChange }) {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Product Dialog */}
+      {/* Edit Product Dialog - Responsive */}
       <Dialog open={isEditProductOpen} onOpenChange={setIsEditProductOpen}>
-        <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
-            <DialogTitle>Edit Product</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">Edit Product</DialogTitle>
+            <DialogDescription className="text-sm">
               Update product information
             </DialogDescription>
           </DialogHeader>
           {editingProduct && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="edit_name">Product Name</Label>
                   <Input
@@ -1128,7 +1198,7 @@ export function InventoryProducts({ onPageChange }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="edit_category">Category</Label>
                   <Input
@@ -1189,7 +1259,7 @@ export function InventoryProducts({ onPageChange }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="edit_location_id">Location ID</Label>
                   <Input
@@ -1203,7 +1273,7 @@ export function InventoryProducts({ onPageChange }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="edit_unit">Unit</Label>
                   <Input
@@ -1226,21 +1296,21 @@ export function InventoryProducts({ onPageChange }) {
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-4">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-2 sm:space-x-2 pt-4">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setIsEditProductOpen(false);
                     setEditingProduct(null);
                   }}
-                  className="border-border hover:bg-primary/5"
+                  className="border-border hover:bg-primary/5 w-full sm:w-auto"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleSaveEdit}
                   disabled={isProcessing}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
                 >
                   {isProcessing ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

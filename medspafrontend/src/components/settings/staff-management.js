@@ -210,32 +210,66 @@ export function StaffManagement({ onPageChange }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          {!isAdmin && (
+      {/* Header - Responsive & Professional */}
+      <div className="space-y-3 sm:space-y-0">
+        {/* Mobile: Heading on top, Back button small icon */}
+        <div className="flex items-start justify-between gap-3 sm:hidden">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-foreground">Staff Management</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Manage your staff members and their permissions</p>
+          </div>
+          <Button
+            variant="ghost"
+            onClick={() => onPageChange("dashboard")}
+            className="h-8 w-8 p-0 flex-shrink-0"
+            size="icon"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="sr-only">Back to Dashboard</span>
+          </Button>
+        </div>
+        
+        {/* Desktop: Original layout */}
+        <div className="hidden sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-row items-center gap-4">
             <Button
               variant="outline"
               onClick={() => onPageChange("dashboard")}
               className="border-border hover:bg-primary/5"
+              size="sm"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Dashboard
             </Button>
-          )}
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Staff Management</h1>
-            <p className="text-muted-foreground">Manage your staff members and their permissions</p>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Staff Management</h1>
+              <p className="text-sm text-muted-foreground">Manage your staff members and their permissions</p>
+            </div>
           </div>
+          {isAdmin && (
+            <Button
+              onClick={() => setIsAddingStaff(true)}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              size="sm"
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add Staff Member
+            </Button>
+          )}
         </div>
-        {!isAdmin && (
-          <Button
-            onClick={() => setIsAddingStaff(true)}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground"
-          >
-            <UserPlus className="mr-2 h-4 w-4" />
-            Add Staff Member
-          </Button>
+        
+        {/* Mobile: Action buttons below heading */}
+        {isAdmin && (
+          <div className="sm:hidden">
+            <Button
+              onClick={() => setIsAddingStaff(true)}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
+              size="sm"
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add Staff Member
+            </Button>
+          </div>
         )}
       </div>
 

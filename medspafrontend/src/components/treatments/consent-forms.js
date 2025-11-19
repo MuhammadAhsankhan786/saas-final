@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { getConsentForms, getAppointmentFormData } from "@/lib/api";
+import { getConsentForms, getAppointmentFormData, downloadConsentFormPDF } from "@/lib/api";
 import { notify } from "@/lib/toast";
 import {
   Card,
@@ -195,7 +195,7 @@ export function ConsentForms({ onPageChange }) {
   const handleCreateForm = () => {
     // Here you would typically create a new consent form
     console.log("Creating new consent form:", newForm);
-    alert("New consent form created successfully!");
+    notify.success("New consent form created successfully!");
     setIsCreateFormOpen(false);
     setNewForm({
       clientName: "",
@@ -207,139 +207,188 @@ export function ConsentForms({ onPageChange }) {
     });
   };
 
-  const handleDownloadForm = (formId) => {
-    // Here you would typically generate and download the PDF
-    console.log(`Downloading consent form ${formId}`);
-    alert("Consent form PDF downloaded successfully!");
+  const handleDownloadForm = async (formId) => {
+    try {
+      const response = await downloadConsentFormPDF(formId);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `consent-form-${formId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      notify.success("Consent form PDF downloaded successfully!");
+    } catch (error) {
+      console.error("Error downloading consent form PDF:", error);
+      notify.error(error.message || "Failed to download PDF. Please try again.");
+    }
   };
 
   const handleSendReminder = (formId) => {
     // Here you would typically send a reminder to the client
     console.log(`Sending reminder for consent form ${formId}`);
-    alert("Reminder sent to client successfully!");
+    notify.success("Reminder sent to client successfully!");
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Button
-            variant="outline"
-            onClick={() => onPageChange("dashboard")}
-            className="border-border hover:bg-primary/5"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Digital Consent Forms</h1>
-            <p className="text-muted-foreground">Manage client consent forms and documentation</p>
-          </div>
-        </div>
-        <Dialog open={isCreateFormOpen} onOpenChange={setIsCreateFormOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              <Plus className="mr-2 h-4 w-4" />
-              New Consent Form
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-card border-border max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Create New Consent Form</DialogTitle>
-              <DialogDescription>
-                Create a new consent form for a client
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="clientName">Client Name</Label>
-                  <Input
-                    id="clientName"
-                    value={newForm.clientName}
-                    onChange={(e) => setNewForm(prev => ({ ...prev, clientName: e.target.value }))}
-                    placeholder="Enter client name"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="clientId">Client ID</Label>
-                  <Input
-                    id="clientId"
-                    value={newForm.clientId}
-                    onChange={(e) => setNewForm(prev => ({ ...prev, clientId: e.target.value }))}
-                    placeholder="Enter client ID"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-              </div>
+    <div className="space-y-4 sm:space-y-6">
+      {/* Create Consent Form Dialog - Shared between desktop and mobile */}
+      <Dialog open={isCreateFormOpen} onOpenChange={setIsCreateFormOpen}>
+        <DialogContent className="bg-card border-border max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg sm:text-xl">Create New Consent Form</DialogTitle>
+            <DialogDescription className="text-sm">
+              Create a new consent form for a client
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="formType">Form Type</Label>
-                <Select value={newForm.service_id} onValueChange={(value) => setNewForm(prev => ({ ...prev, service_id: value }))}>
-                  <SelectTrigger className="bg-input-background border-border">
-                    <SelectValue placeholder="Select service" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {services.map((service) => (
-                      <SelectItem key={service.id} value={service.id}>
-                        {service.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="provider">Provider</Label>
-                  <Input
-                    id="provider"
-                    value={newForm.provider}
-                    onChange={(e) => setNewForm(prev => ({ ...prev, provider: e.target.value }))}
-                    placeholder="Enter provider name"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="location">Location</Label>
-                  <Input
-                    id="location"
-                    value={newForm.location}
-                    onChange={(e) => setNewForm(prev => ({ ...prev, location: e.target.value }))}
-                    placeholder="Enter location"
-                    className="bg-input-background border-border"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={newForm.notes}
-                  onChange={(e) => setNewForm(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Additional notes..."
+                <Label htmlFor="clientName">Client Name</Label>
+                <Input
+                  id="clientName"
+                  value={newForm.clientName}
+                  onChange={(e) => setNewForm(prev => ({ ...prev, clientName: e.target.value }))}
+                  placeholder="Enter client name"
                   className="bg-input-background border-border"
-                  rows={3}
                 />
               </div>
-              <div className="flex justify-end space-x-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsCreateFormOpen(false)}
-                  className="border-border hover:bg-primary/5"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateForm}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                >
-                  Create Form
-                </Button>
+              <div>
+                <Label htmlFor="clientId">Client ID</Label>
+                <Input
+                  id="clientId"
+                  value={newForm.clientId}
+                  onChange={(e) => setNewForm(prev => ({ ...prev, clientId: e.target.value }))}
+                  placeholder="Enter client ID"
+                  className="bg-input-background border-border"
+                />
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
+            <div>
+              <Label htmlFor="formType">Form Type</Label>
+              <Select value={newForm.service_id} onValueChange={(value) => setNewForm(prev => ({ ...prev, service_id: value }))}>
+                <SelectTrigger className="bg-input-background border-border">
+                  <SelectValue placeholder="Select service" />
+                </SelectTrigger>
+                <SelectContent>
+                  {services.map((service) => (
+                    <SelectItem key={service.id} value={service.id}>
+                      {service.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="provider">Provider</Label>
+                <Input
+                  id="provider"
+                  value={newForm.provider}
+                  onChange={(e) => setNewForm(prev => ({ ...prev, provider: e.target.value }))}
+                  placeholder="Enter provider name"
+                  className="bg-input-background border-border"
+                />
+              </div>
+              <div>
+                <Label htmlFor="location">Location</Label>
+                <Input
+                  id="location"
+                  value={newForm.location}
+                  onChange={(e) => setNewForm(prev => ({ ...prev, location: e.target.value }))}
+                  placeholder="Enter location"
+                  className="bg-input-background border-border"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea
+                id="notes"
+                value={newForm.notes}
+                onChange={(e) => setNewForm(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Additional notes..."
+                className="bg-input-background border-border"
+                rows={3}
+              />
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-2 sm:space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsCreateFormOpen(false)}
+                className="border-border hover:bg-primary/5 w-full sm:w-auto"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateForm}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
+              >
+                Create Form
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Header - Responsive & Professional */}
+      <div className="space-y-3 sm:space-y-0">
+        {/* Mobile: Heading on top, Back button small icon */}
+        <div className="flex items-start justify-between gap-3 sm:hidden">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-foreground">Digital Consent Forms</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Manage client consent forms and documentation</p>
+          </div>
+          <Button
+            variant="ghost"
+            onClick={() => onPageChange("dashboard")}
+            className="h-8 w-8 p-0 flex-shrink-0"
+            size="icon"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="sr-only">Back to Dashboard</span>
+          </Button>
+        </div>
+        
+        {/* Desktop: Original layout */}
+        <div className="hidden sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-row items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => onPageChange("dashboard")}
+              className="border-border hover:bg-primary/5"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Digital Consent Forms</h1>
+              <p className="text-sm text-muted-foreground">Manage client consent forms and documentation</p>
+            </div>
+          </div>
+          <Button 
+            onClick={() => setIsCreateFormOpen(true)}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground" 
+            size="sm"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            New Consent Form
+          </Button>
+        </div>
+        
+        {/* Mobile: Action buttons below heading */}
+        <div className="sm:hidden">
+          <Button 
+            onClick={() => setIsCreateFormOpen(true)}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground w-full" 
+            size="sm"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            New Consent Form
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -378,65 +427,68 @@ export function ConsentForms({ onPageChange }) {
         </CardContent>
       </Card>
 
-      {/* Consent Forms Table */}
+      {/* Consent Forms Table - Responsive */}
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-foreground">
+          <CardTitle className="text-foreground text-lg sm:text-xl">
             Consent Forms ({filteredForms.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
             {loading ? (
               <div className="text-center py-8">
-                <p className="text-muted-foreground">Loading consent forms...</p>
+                <p className="text-muted-foreground text-sm sm:text-base">Loading consent forms...</p>
               </div>
             ) : (
-              <Table>
+              <div className="inline-block min-w-full align-middle">
+                <Table className="min-w-full">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Form Type</TableHead>
-                    <TableHead>Provider</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Signed Date</TableHead>
-                    <TableHead>Expiry Date</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="text-xs sm:text-sm">Client</TableHead>
+                    <TableHead className="text-xs sm:text-sm hidden sm:table-cell">Form Type</TableHead>
+                    <TableHead className="text-xs sm:text-sm hidden md:table-cell">Provider</TableHead>
+                    <TableHead className="text-xs sm:text-sm">Status</TableHead>
+                    <TableHead className="text-xs sm:text-sm hidden lg:table-cell">Signed Date</TableHead>
+                    <TableHead className="text-xs sm:text-sm hidden lg:table-cell">Expiry Date</TableHead>
+                    <TableHead className="text-xs sm:text-sm">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredForms.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground text-sm">
                         No consent forms found
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredForms.map((form) => (
                   <TableRow key={form.id}>
-                    <TableCell>
+                    <TableCell className="text-xs sm:text-sm">
                       <div className="font-medium text-foreground">{form.clientName}</div>
-                      <div className="text-sm text-muted-foreground">ID: {form.clientId}</div>
+                      <div className="text-xs text-muted-foreground sm:hidden">{form.formType}</div>
+                      <div className="text-xs text-muted-foreground">ID: {form.clientId}</div>
                     </TableCell>
-                    <TableCell className="text-foreground">{form.formType}</TableCell>
-                    <TableCell>
+                    <TableCell className="text-foreground text-xs sm:text-sm hidden sm:table-cell">{form.formType}</TableCell>
+                    <TableCell className="text-xs sm:text-sm hidden md:table-cell">
                       <div>
                         <div className="text-foreground">{form.provider}</div>
-                        <div className="text-sm text-muted-foreground">{form.location}</div>
+                        <div className="text-xs text-muted-foreground">{form.location}</div>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
+                    <TableCell className="text-xs sm:text-sm">
+                      <div className="flex items-center space-x-1 sm:space-x-2">
                         {getStatusIcon(form.status)}
-                        <Badge variant={getStatusBadgeVariant(form.status)}>
-                          {form.status.charAt(0).toUpperCase() + form.status.slice(1)}
+                        <Badge variant={getStatusBadgeVariant(form.status)} className="text-xs">
+                          <span className="hidden sm:inline">{form.status.charAt(0).toUpperCase() + form.status.slice(1)}</span>
+                          <span className="sm:hidden">{form.status.charAt(0).toUpperCase()}</span>
                         </Badge>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-xs sm:text-sm hidden lg:table-cell">
                       {form.signedDate ? (
                         <div className="flex items-center space-x-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <Calendar className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
                           <span className="text-foreground">
                             {new Date(form.signedDate).toLocaleDateString()}
                           </span>
@@ -445,40 +497,43 @@ export function ConsentForms({ onPageChange }) {
                         <span className="text-muted-foreground">Not signed</span>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-xs sm:text-sm hidden lg:table-cell">
                       <div className="flex items-center space-x-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <Calendar className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
                         <span className="text-foreground">
                           {new Date(form.expiryDate).toLocaleDateString()}
                         </span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-1 sm:space-x-2">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleViewDetails(form)}
-                          className="border-border hover:bg-primary/5"
+                          className="border-border hover:bg-primary/5 h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-3"
                         >
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">View</span>
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleDownloadForm(form.id)}
-                          className="border-border hover:bg-primary/5"
+                          className="border-border hover:bg-primary/5 h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-3"
                         >
-                          <Download className="h-4 w-4" />
+                          <Download className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Download</span>
                         </Button>
                         {form.status === "pending" && (
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleSendReminder(form.id)}
-                            className="border-border hover:bg-primary/5"
+                            className="border-border hover:bg-primary/5 h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-3 text-xs"
                           >
-                            Send Reminder
+                            <span className="hidden sm:inline">Send Reminder</span>
+                            <span className="sm:hidden">Remind</span>
                           </Button>
                         )}
                       </div>
@@ -488,16 +543,17 @@ export function ConsentForms({ onPageChange }) {
                   )}
                 </TableBody>
               </Table>
+              </div>
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Form Details Dialog */}
+      {/* Form Details Dialog - Responsive */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="bg-card border-border max-w-2xl">
+        <DialogContent className="bg-card border-border max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Consent Form Details</DialogTitle>
+            <DialogTitle className="text-lg sm:text-xl">Consent Form Details</DialogTitle>
             <DialogDescription>
               Complete information about this consent form
             </DialogDescription>
@@ -576,11 +632,11 @@ export function ConsentForms({ onPageChange }) {
               )}
 
               {/* Actions */}
-              <div className="flex justify-end space-x-2">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-2 sm:space-x-2">
                 <Button
                   variant="outline"
                   onClick={() => setIsDetailsOpen(false)}
-                  className="border-border hover:bg-primary/5"
+                  className="border-border hover:bg-primary/5 w-full sm:w-auto"
                 >
                   Close
                 </Button>

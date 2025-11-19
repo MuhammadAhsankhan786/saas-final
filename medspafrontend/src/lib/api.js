@@ -177,22 +177,8 @@ export async function fetchWithAuth(url, options = {}) {
     const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
     console.log(`👤 User role:`, currentUser.role);
     
-    // Client-side guard: prevent admin from performing ANY mutations (READ-ONLY ACCESS)
-    try {
-      const method = (options.method || 'GET').toUpperCase();
-      const isMutation = method !== 'GET' && method !== 'HEAD';
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const isAdmin = user && user.role === 'admin';
-      
-      if (isAdmin && isMutation) {
-        throw new Error('Access forbidden. Admin role has read-only access. Cannot modify data.');
-      }
-    } catch (error) {
-      // Re-throw client-side guard errors
-      if (error.message.includes('Access forbidden')) {
-        throw error;
-      }
-    }
+    // Note: Admin can perform mutations on allowed endpoints (Packages, Services, Locations, Staff, Settings)
+    // Backend routes handle proper authorization - no need for blanket client-side blocking
 
     const res = await fetch(`${API_BASE}${url}`, { ...options, headers });
     
@@ -265,15 +251,109 @@ export async function fetchWithAuth(url, options = {}) {
         console.log("🔐 Error response data:", errorData);
         console.log("🔐 Response headers:", Object.fromEntries(res.headers.entries()));
         
-        // Only auto-logout if we're not already on the login page
-        // This prevents redirect loops and allows the user to see the error
-        if (window.location.pathname !== '/login' && window.location.pathname !== '/') {
-          console.log("🔐 Token cleared, will redirect to login on next navigation");
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
+        // Try to refresh token if it exists and error indicates token expiration
+        const currentToken = localStorage.getItem("token");
+        if (currentToken && (errorData.error === 'Token expired' || errorData.error === 'Unauthorized' || status === 401)) {
+          console.log("🔄 Attempting to refresh token...");
+          let refreshFailed = false;
+          try {
+            const refreshRes = await fetch(`${API_BASE}/refresh`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${currentToken}`,
+                'Content-Type': 'application/json',
+              },
+            });
+            
+            if (refreshRes.ok) {
+              const refreshData = await refreshRes.json();
+              const newToken = refreshData.access_token || refreshData.token;
+              if (newToken) {
+                console.log("✅ Token refreshed successfully");
+                localStorage.setItem("token", newToken);
+                // Update user data if provided
+                if (refreshData.user) {
+                  localStorage.setItem("user", JSON.stringify(refreshData.user));
+                }
+                // Retry the original request with new token
+                const retryHeaders = {
+                  ...headers,
+                  'Authorization': `Bearer ${newToken}`,
+                };
+                const retryRes = await fetch(`${API_BASE}${url}`, { ...options, headers: retryHeaders });
+                if (retryRes.ok) {
+                  const retryData = await retryRes.json();
+                  console.log("✅ Request succeeded after token refresh");
+                  return retryData;
+                } else {
+                  const retryErrorData = await retryRes.json().catch(() => ({}));
+                  console.log("⚠️ Request still failed after token refresh:", retryRes.status, retryErrorData);
+                  // If retry still fails with 401, token refresh didn't work - need to re-authenticate
+                  if (retryRes.status === 401) {
+                    refreshFailed = true;
+                    throw new Error(retryErrorData.message || retryErrorData.error || "Session expired. Please log in again.");
+                  }
+                }
+              } else {
+                refreshFailed = true;
+                console.log("❌ Token refresh response missing token");
+              }
+            } else {
+              // Handle refresh endpoint errors (401, 500, etc.)
+              const contentType = refreshRes.headers.get("content-type");
+              let refreshErrorData = {};
+              if (contentType && contentType.includes("application/json")) {
+                try {
+                  refreshErrorData = await refreshRes.json();
+                } catch (e) {
+                  console.log("⚠️ Could not parse refresh error response as JSON");
+                }
+              }
+              
+              refreshFailed = true;
+              const errorMsg = refreshErrorData.message || refreshErrorData.error || `Token refresh failed (${refreshRes.status})`;
+              console.log(`❌ Token refresh failed (${refreshRes.status}):`, errorMsg);
+              
+              // If refresh endpoint returns 500, it's a server error - user needs to re-login
+              if (refreshRes.status >= 500) {
+                console.log("⚠️ Server error during token refresh - session may be invalid");
+              }
+            }
+          } catch (refreshError) {
+            refreshFailed = true;
+            console.log("❌ Token refresh error:", refreshError);
+            // If it's already an Error object with a message, preserve it
+            if (refreshError instanceof Error && refreshError.message) {
+              // Don't override if we already set a message
+              if (!refreshError.message.includes("Session expired")) {
+                throw refreshError;
+              }
+            }
+          }
+          
+          // If refresh failed, clear session immediately
+          if (refreshFailed) {
+            console.log("🔐 Clearing session due to refresh failure");
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+          }
         }
         
-        throw new Error(errorData.message || errorData.error || "Unauthorized. Please check your credentials.");
+        // Only auto-logout if we're not already on the login page
+        // This prevents redirect loops and allows the user to see the error
+        // Note: Session may have already been cleared if refresh failed
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/') {
+          const tokenStillExists = localStorage.getItem("token");
+          if (tokenStillExists) {
+            console.log("🔐 Token cleared, will redirect to login on next navigation");
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+          }
+        }
+        
+        // Provide a clear error message
+        const errorMessage = errorData.message || errorData.error || "Unauthorized. Please log in again.";
+        throw new Error(errorMessage);
       }
       
       if (status === 422) {
@@ -455,6 +535,8 @@ export async function getClients(filters = {}) {
     url = `/admin/clients${queryParams ? `?${queryParams}` : ''}`;
   } else if (user.role === 'reception') {
     url = `/reception/clients${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'provider') {
+    url = `/provider/clients${queryParams ? `?${queryParams}` : ''}`;
   } else {
     url = `/staff/clients${queryParams ? `?${queryParams}` : ''}`;
   }
@@ -477,6 +559,8 @@ export async function getClient(id) {
     endpoint = `/admin/clients/${id}`;
   } else if (user.role === 'reception') {
     endpoint = `/reception/clients/${id}`;
+  } else if (user.role === 'provider') {
+    endpoint = `/provider/clients/${id}`;
   } else {
     endpoint = `/staff/clients/${id}`;
   }
@@ -492,9 +576,14 @@ export async function createClient(clientData) {
     throw new Error('Admin role has read-only access. Cannot create clients.');
   }
   
+  // Provider cannot create clients
+  if (user.role === 'provider') {
+    throw new Error('Provider role cannot create clients. Only reception can create clients.');
+  }
+  
   const endpoint = (user.role === 'reception')
     ? '/reception/clients'
-    : (user.role === 'provider' ? '/staff/clients' : '/admin/clients');
+    : '/admin/clients';
   
   return fetchWithAuth(endpoint, {
     method: "POST",
@@ -510,9 +599,14 @@ export async function updateClient(id, clientData) {
     throw new Error('Admin role has read-only access. Cannot update clients.');
   }
   
+  // Provider cannot update clients
+  if (user.role === 'provider') {
+    throw new Error('Provider role cannot update clients. Only reception can update clients.');
+  }
+  
   const endpoint = (user.role === 'reception')
     ? `/reception/clients/${id}`
-    : (user.role === 'provider' ? `/staff/clients/${id}` : `/admin/clients/${id}`);
+    : `/admin/clients/${id}`;
   
   return fetchWithAuth(endpoint, {
     method: "PUT",
@@ -528,9 +622,14 @@ export async function deleteClient(id) {
     throw new Error('Admin role has read-only access. Cannot delete clients.');
   }
   
+  // Provider cannot delete clients
+  if (user.role === 'provider') {
+    throw new Error('Provider role cannot delete clients. Only reception can delete clients.');
+  }
+  
   const endpoint = (user.role === 'reception')
     ? `/reception/clients/${id}`
-    : (user.role === 'provider' ? `/staff/clients/${id}` : `/admin/clients/${id}`);
+    : `/admin/clients/${id}`;
   
   return fetchWithAuth(endpoint, {
     method: "DELETE",
@@ -566,7 +665,7 @@ export async function getAppointments(filters = {}) {
   } else if (user.role === 'reception') {
     url = `/reception/appointments${queryParams ? `?${queryParams}` : ''}`;
   } else if (user.role === 'provider') {
-    url = `/staff/appointments${queryParams ? `?${queryParams}` : ''}`;
+    url = `/provider/appointments${queryParams ? `?${queryParams}` : ''}`;
   } else {
     // Client or fallback
     url = `/client/appointments${queryParams ? `?${queryParams}` : ''}`;
@@ -639,10 +738,12 @@ export async function createAppointment(appointmentData) {
   if (user.role === 'client') {
     endpoint = "/client/appointments";
   } else if (user.role === 'admin') {
-    // Admin is read-only, but allow for backward compatibility
-    throw new Error('Admin role has read-only access. Cannot create appointments.');
+    endpoint = "/admin/appointments"; // Admin can create appointments
   } else if (user.role === 'reception') {
     endpoint = "/reception/appointments";
+  } else if (user.role === 'provider') {
+    // Provider cannot create appointments
+    throw new Error('Provider role cannot create appointments. Only admin and reception can create appointments.');
   } else {
     endpoint = "/staff/appointments";
   }
@@ -661,10 +762,13 @@ export async function updateAppointment(id, appointmentData) {
   let endpoint;
   if (user.role === 'client') {
     endpoint = `/client/appointments/${id}`;
+  } else if (user.role === 'admin') {
+    endpoint = `/admin/appointments/${id}`; // Admin can update appointments
   } else if (user.role === 'reception') {
     endpoint = `/reception/appointments/${id}`;
+  } else if (user.role === 'provider') {
+    endpoint = `/provider/appointments/${id}`;
   } else {
-    // Admin, provider use staff endpoint (admin routes are read-only)
     endpoint = `/staff/appointments/${id}`;
   }
   
@@ -685,8 +789,9 @@ export async function updateAppointmentStatus(id, status) {
     endpoint = `/admin/appointments/${id}/status`;
   } else if (user.role === 'reception') {
     endpoint = `/reception/appointments/${id}/status`;
+  } else if (user.role === 'provider') {
+    endpoint = `/provider/appointments/${id}/status`;
   } else {
-    // Provider
     endpoint = `/staff/appointments/${id}/status`;
   }
   
@@ -794,6 +899,9 @@ export async function getPackages(filters = {}) {
     url = `/admin/packages${queryParams ? `?${queryParams}` : ''}`;
   } else if (user.role === 'reception') {
     url = `/reception/packages${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'provider') {
+    // Provider cannot access packages
+    throw new Error('Provider role cannot access packages.');
   } else {
     url = `/staff/packages${queryParams ? `?${queryParams}` : ''}`;
   }
@@ -813,6 +921,9 @@ export async function getPackage(id) {
     endpoint = `/admin/packages/${id}`;
   } else if (user.role === 'reception') {
     endpoint = `/reception/packages/${id}`;
+  } else if (user.role === 'provider') {
+    // Provider cannot access packages
+    throw new Error('Provider role cannot access packages.');
   } else {
     endpoint = `/staff/packages/${id}`;
   }
@@ -823,18 +934,19 @@ export async function getPackage(id) {
 export async function createPackage(packageData) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   
-  // Admin has read-only access, cannot create
-  if (user.role === 'admin') {
-    throw new Error('Access forbidden. Admin role has read-only access. Cannot create packages.');
+  // Provider cannot create packages
+  if (user.role === 'provider') {
+    throw new Error('Provider role cannot create packages.');
   }
   
-  // Staff (provider/reception) can create via /staff/packages
-  const endpoint = (user.role === 'reception')
-    ? '/reception/packages'
-    : (user.role === 'provider' ? '/staff/packages' : null);
-  
-  if (!endpoint) {
-    throw new Error('Unauthorized. Only staff can create packages.');
+  // Admin and reception can create packages
+  let endpoint;
+  if (user.role === 'admin') {
+    endpoint = '/admin/packages';
+  } else if (user.role === 'reception') {
+    endpoint = '/reception/packages';
+  } else {
+    throw new Error('Unauthorized. Only admin and reception can create packages.');
   }
   
   return fetchWithAuth(endpoint, {
@@ -846,19 +958,19 @@ export async function createPackage(packageData) {
 export async function updatePackage(id, packageData) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   
-  // Admin has read-only access, cannot update
-  if (user.role === 'admin') {
-    throw new Error('Access forbidden. Admin role has read-only access. Cannot update packages.');
+  // Provider cannot update packages
+  if (user.role === 'provider') {
+    throw new Error('Provider role cannot update packages.');
   }
   
-  // Staff (provider/reception) can update via /staff/packages
+  // Admin and reception can update packages
   let endpoint;
-  if (user.role === 'reception') {
+  if (user.role === 'admin') {
+    endpoint = `/admin/packages/${id}`;
+  } else if (user.role === 'reception') {
     endpoint = `/reception/packages/${id}`;
-  } else if (user.role === 'provider') {
-    endpoint = `/staff/packages/${id}`;
   } else {
-    throw new Error('Unauthorized. Only staff can update packages.');
+    throw new Error('Unauthorized. Only admin and reception can update packages.');
   }
   
   return fetchWithAuth(endpoint, {
@@ -870,22 +982,19 @@ export async function updatePackage(id, packageData) {
 export async function deletePackage(id) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   
-  // Admin has read-only access, cannot delete
-  if (user.role === 'admin') {
-    throw new Error('Access forbidden. Admin role has read-only access. Cannot delete packages.');
+  // Provider cannot delete packages
+  if (user.role === 'provider') {
+    throw new Error('Provider role cannot delete packages.');
   }
   
-  // Staff (provider/reception) can delete via /staff/packages
+  // Admin and reception can delete packages
   let endpoint;
-  if (user.role === 'reception') {
-    endpoint = `/reception/packages/${id}`;
-  } else if (user.role === 'provider') {
-    endpoint = `/staff/packages/${id}`;
-  } else if (user.role === 'admin') {
-    // This won't be reached due to check above, but keeping for clarity
+  if (user.role === 'admin') {
     endpoint = `/admin/packages/${id}`;
+  } else if (user.role === 'reception') {
+    endpoint = `/reception/packages/${id}`;
   } else {
-    throw new Error('Unauthorized. Only staff can delete packages.');
+    throw new Error('Unauthorized. Only admin and reception can delete packages.');
   }
   
   return fetchWithAuth(endpoint, {
@@ -901,10 +1010,15 @@ export async function assignPackageToClient(clientId, packageId) {
     throw new Error('Admin role has read-only access. Cannot assign packages.');
   }
   
-  // Use staff endpoint for reception/provider
+  // Provider cannot assign packages
+  if (user.role === 'provider') {
+    throw new Error('Provider role cannot assign packages.');
+  }
+  
+  // Use staff endpoint for reception
   const endpoint = (user.role === 'reception')
     ? '/reception/packages/assign'
-    : (user.role === 'provider' ? '/staff/packages/assign' : '/admin/packages/assign');
+    : '/admin/packages/assign';
   
   // Log RBAC fix if needed
   if (user.role === 'reception') {
@@ -993,6 +1107,9 @@ export async function getPayments(filters = {}) {
     url = `/admin/payments${queryParams ? `?${queryParams}` : ''}`;
   } else if (user.role === 'reception') {
     url = `/reception/payments${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'provider') {
+    // Provider cannot access payments
+    throw new Error('Provider role cannot access payments.');
   } else {
     url = `/staff/payments${queryParams ? `?${queryParams}` : ''}`;
   }
@@ -1012,6 +1129,9 @@ export async function getPayment(id) {
     endpoint = `/admin/payments/${id}`;
   } else if (user.role === 'reception') {
     endpoint = `/reception/payments/${id}`;
+  } else if (user.role === 'provider') {
+    // Provider cannot access payments
+    throw new Error('Provider role cannot access payments.');
   } else {
     endpoint = `/staff/payments/${id}`;
   }
@@ -1030,6 +1150,9 @@ export async function createPayment(paymentData) {
     throw new Error('Admin role has read-only access. Cannot create payments.');
   } else if (user.role === 'reception') {
     endpoint = "/reception/payments";
+  } else if (user.role === 'provider') {
+    // Provider cannot create payments
+    throw new Error('Provider role cannot create payments.');
   } else {
     endpoint = "/staff/payments";
   }
@@ -1043,15 +1166,19 @@ export async function createPayment(paymentData) {
 export async function updatePayment(id, paymentData) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   
-  // Admin is read-only, reception/provider use staff endpoint
+  // Admin is read-only, provider cannot update payments
   if (user.role === 'admin') {
     throw new Error('Admin role has read-only access. Cannot update payments.');
   }
   
-  // Use staff endpoint for reception/provider
+  if (user.role === 'provider') {
+    throw new Error('Provider role cannot update payments.');
+  }
+  
+  // Use staff endpoint for reception
   const endpoint = (user.role === 'reception')
     ? `/reception/payments/${id}`
-    : (user.role === 'provider' ? `/staff/payments/${id}` : `/admin/payments/${id}`);
+    : `/admin/payments/${id}`;
   
   return fetchWithAuth(endpoint, {
     method: "PUT",
@@ -1062,15 +1189,19 @@ export async function updatePayment(id, paymentData) {
 export async function deletePayment(id) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   
-  // Admin is read-only, reception/provider use staff endpoint
+  // Admin is read-only, provider cannot delete payments
   if (user.role === 'admin') {
     throw new Error('Admin role has read-only access. Cannot delete payments.');
   }
   
-  // Use staff endpoint for reception/provider
+  if (user.role === 'provider') {
+    throw new Error('Provider role cannot delete payments.');
+  }
+  
+  // Use staff endpoint for reception
   const endpoint = (user.role === 'reception')
     ? `/reception/payments/${id}`
-    : (user.role === 'provider' ? `/staff/payments/${id}` : `/admin/payments/${id}`);
+    : `/admin/payments/${id}`;
   
   return fetchWithAuth(endpoint, {
     method: "DELETE",
@@ -1088,6 +1219,9 @@ export async function confirmStripePayment(paymentId, paymentIntentId) {
     endpoint = `/client/payments/${paymentId}/confirm-stripe`;
   } else if (user.role === 'reception') {
     endpoint = `/reception/payments/${paymentId}/confirm-stripe`;
+  } else if (user.role === 'provider') {
+    // Provider cannot confirm payments
+    throw new Error('Provider role cannot confirm payments.');
   } else {
     endpoint = `/staff/payments/${paymentId}/confirm-stripe`;
   }
@@ -1150,8 +1284,8 @@ export async function getProducts(filters = {}) {
     url = `/reception/products${queryParams ? `?${queryParams}` : ''}`;
     console.log('✅ RBAC: Using /reception/products for reception role');
   } else if (user.role === 'provider') {
-    url = `/staff/products${queryParams ? `?${queryParams}` : ''}`;
-    console.log('✅ RBAC: Using /staff/products for provider role');
+    url = `/provider/inventory/products${queryParams ? `?${queryParams}` : ''}`;
+    console.log('✅ RBAC: Using /provider/inventory/products for provider role');
   } else {
     url = `/admin/products${queryParams ? `?${queryParams}` : ''}`;
   }
@@ -1169,7 +1303,8 @@ export async function getProduct(id) {
   } else if (user.role === 'reception') {
     endpoint = `/reception/products/${id}`;
   } else if (user.role === 'provider') {
-    endpoint = `/staff/products/${id}`;
+    endpoint = `/provider/inventory/products/${id}`;
+    console.log('✅ RBAC: Using /provider/inventory/products for provider role');
   } else {
     endpoint = `/admin/products/${id}`;
   }
@@ -1204,6 +1339,21 @@ export async function adjustStock(productId, adjustmentData) {
   });
 }
 
+// ✅ Inventory Usage API Functions (Provider only - log usage)
+export async function logInventoryUsage(usageData) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (user.role !== 'provider') {
+    throw new Error('Inventory usage logging is only available for provider role.');
+  }
+  console.log('📦 Logging inventory usage:', usageData);
+  const result = await fetchWithAuth('/provider/inventory/usage', {
+    method: 'POST',
+    body: JSON.stringify(usageData),
+  });
+  console.log('✅ Inventory usage logged:', result);
+  return result;
+}
+
 export async function getStockNotifications() {
   return fetchWithAuth("/admin/stock-notifications");
 }
@@ -1220,7 +1370,12 @@ export async function getStockAlerts() {
   
   // Provider/Staff should use stock-notifications endpoint (read-only)
   // Admin can access stock-alerts (full access)
-  const url = (user.role === 'provider' || user.role === 'reception' || user.role === 'staff')
+  // Provider cannot access stock notifications
+  if (user.role === 'provider') {
+    throw new Error('Provider role cannot access stock notifications.');
+  }
+  
+  const url = (user.role === 'reception' || user.role === 'staff')
     ? "/staff/stock-notifications"
     : "/admin/stock-alerts";
   
@@ -1230,8 +1385,13 @@ export async function getStockAlerts() {
 
 export async function getStockAlertStatistics() {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const url = (user.role === 'provider' || user.role === 'reception' || user.role === 'staff')
-    ? "/staff/stock-notifications/statistics" // If available, otherwise will return empty
+  // Provider cannot access stock notifications
+  if (user.role === 'provider') {
+    throw new Error('Provider role cannot access stock notifications.');
+  }
+  
+  const url = (user.role === 'reception' || user.role === 'staff')
+    ? "/staff/stock-notifications/statistics"
     : "/admin/stock-alerts/statistics";
   
   console.log(`✅ RBAC: Using ${url} for ${user.role} role`);
@@ -1286,6 +1446,17 @@ export async function getAdminDashboardStats() {
   return stats;
 }
 
+export async function getProviderDashboardStats() {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (user.role !== 'provider') {
+    throw new Error('Provider dashboard stats are only available for provider role.');
+  }
+  console.log('📊 Fetching provider dashboard stats from /provider/dashboard');
+  const stats = await fetchWithAuth('/provider/dashboard');
+  console.log('✅ Provider dashboard stats:', stats);
+  return stats;
+}
+
 export async function getStaff() {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const url = user.role === 'admin' 
@@ -1328,10 +1499,12 @@ export async function getTreatments(filters = {}) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const queryParams = new URLSearchParams(filters).toString();
   
-  // Provider uses /staff/treatments, client uses /client/treatments
+  // Provider uses /provider/treatments, client uses /client/treatments
   const endpoint = (user.role === 'client') 
     ? `/client/treatments${queryParams ? `?${queryParams}` : ''}`
-    : `/staff/treatments${queryParams ? `?${queryParams}` : ''}`;
+    : (user.role === 'provider' 
+      ? `/provider/treatments${queryParams ? `?${queryParams}` : ''}`
+      : `/staff/treatments${queryParams ? `?${queryParams}` : ''}`);
   
   console.log(`✅ RBAC: Using ${endpoint} for ${user.role} role`);
   return fetchWithAuth(endpoint);
@@ -1342,7 +1515,9 @@ export async function getTreatment(id) {
   
   const endpoint = (user.role === 'client') 
     ? `/client/treatments/${id}`
-    : `/staff/treatments/${id}`;
+    : (user.role === 'provider'
+      ? `/provider/treatments/${id}`
+      : `/staff/treatments/${id}`);
   
   return fetchWithAuth(endpoint);
 }
@@ -1354,7 +1529,9 @@ export async function createTreatment(treatmentData) {
     throw new Error('Clients cannot create treatments.');
   }
   
-  const endpoint = `/staff/treatments`;
+  const endpoint = (user.role === 'provider')
+    ? `/provider/treatments`
+    : `/staff/treatments`;
   
   return fetchWithAuth(endpoint, {
     method: "POST",
@@ -1369,11 +1546,83 @@ export async function updateTreatment(id, treatmentData) {
     throw new Error('Clients cannot update treatments.');
   }
   
-  const endpoint = `/staff/treatments/${id}`;
+  const endpoint = (user.role === 'provider')
+    ? `/provider/treatments/${id}`
+    : `/staff/treatments/${id}`;
   
   return fetchWithAuth(endpoint, {
     method: "PUT",
     body: JSON.stringify(treatmentData),
+  });
+}
+
+export async function deleteTreatment(id) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  if (user.role === 'client') {
+    throw new Error('Clients cannot delete treatments.');
+  }
+  
+  const endpoint = (user.role === 'provider')
+    ? `/provider/treatments/${id}`
+    : `/staff/treatments/${id}`;
+  
+  return fetchWithAuth(endpoint, {
+    method: "DELETE",
+  });
+}
+
+// ✅ Treatment Photos API Functions (Provider only)
+export async function uploadTreatmentPhotos(treatmentId, photoData) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (user.role !== 'provider') {
+    throw new Error('Photo upload is only available for provider role.');
+  }
+  
+  const formData = new FormData();
+  if (photoData.before_photo) {
+    formData.append('before_photo', photoData.before_photo);
+  }
+  if (photoData.after_photo) {
+    formData.append('after_photo', photoData.after_photo);
+  }
+  
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_BASE}/provider/treatments/${treatmentId}/photos`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: formData,
+  });
+  
+  if (!response.ok) {
+    let errorMessage = 'Failed to upload photos';
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.message || errorData.error || errorMessage;
+      console.error('Photo upload error:', errorData);
+    } catch (e) {
+      console.error('Photo upload failed with status:', response.status, response.statusText);
+    }
+    throw new Error(errorMessage);
+  }
+  
+  return response.json();
+}
+
+export async function deleteTreatmentPhoto(treatmentId, photoType) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (user.role !== 'provider') {
+    throw new Error('Photo deletion is only available for provider role.');
+  }
+  
+  if (!['before', 'after'].includes(photoType)) {
+    throw new Error('Photo type must be "before" or "after"');
+  }
+  
+  return fetchWithAuth(`/provider/treatments/${treatmentId}/photos/${photoType}`, {
+    method: 'DELETE',
   });
 }
 
@@ -1382,10 +1631,12 @@ export async function getConsentForms(filters = {}) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const queryParams = new URLSearchParams(filters).toString();
   
-  // Provider uses /staff/consent-forms, client uses /client/consent-forms
+  // Provider uses /provider/consent-forms, client uses /client/consent-forms
   const endpoint = (user.role === 'client') 
     ? `/client/consent-forms${queryParams ? `?${queryParams}` : ''}`
-    : `/staff/consent-forms${queryParams ? `?${queryParams}` : ''}`;
+    : (user.role === 'provider'
+      ? `/provider/consent-forms${queryParams ? `?${queryParams}` : ''}`
+      : `/staff/consent-forms${queryParams ? `?${queryParams}` : ''}`);
   
   console.log(`✅ RBAC: Using ${endpoint} for ${user.role} role`);
   return fetchWithAuth(endpoint);
@@ -1396,7 +1647,9 @@ export async function getConsentForm(id) {
   
   const endpoint = (user.role === 'client') 
     ? `/client/consent-forms/${id}`
-    : `/staff/consent-forms/${id}`;
+    : (user.role === 'provider'
+      ? `/provider/consent-forms/${id}`
+      : `/staff/consent-forms/${id}`);
   
   return fetchWithAuth(endpoint);
 }
@@ -1409,7 +1662,9 @@ export async function createConsentForm(consentData) {
     if (user.role === 'admin') {
       throw new Error('Admin role has read-only access. Cannot create consent forms.');
     }
-    const endpoint = `/staff/consent-forms`;
+    const endpoint = (user.role === 'provider')
+      ? `/provider/consent-forms`
+      : `/staff/consent-forms`;
     return fetchWithAuth(endpoint, {
       method: "POST",
       body: JSON.stringify(consentData),
@@ -1429,7 +1684,9 @@ export async function updateConsentForm(id, consentData) {
   
   const endpoint = (user.role === 'client') 
     ? `/client/consent-forms/${id}`
-    : `/staff/consent-forms/${id}`;
+    : (user.role === 'provider'
+      ? `/provider/consent-forms/${id}`
+      : `/staff/consent-forms/${id}`);
   
   return fetchWithAuth(endpoint, {
     method: "PUT",
@@ -1439,6 +1696,41 @@ export async function updateConsentForm(id, consentData) {
 
 export async function getConsentFormFile(id, filename) {
   return fetchWithAuth(`/files/consent-forms/${id}/${filename}`);
+}
+
+// Download consent form as PDF
+export async function downloadConsentFormPDF(id) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const token = localStorage.getItem('token');
+  
+  if (!token) {
+    throw new Error('No authentication token found');
+  }
+
+  // Determine endpoint based on role
+  let endpoint;
+  if (user.role === 'provider') {
+    endpoint = `/provider/consent-forms/${id}/pdf`;
+  } else if (user.role === 'client') {
+    endpoint = `/client/consent-forms/${id}/pdf`;
+  } else {
+    endpoint = `/staff/consent-forms/${id}/pdf`;
+  }
+
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/pdf',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to download PDF: ${response.status}`);
+  }
+
+  return response;
 }
 
 export async function getTreatmentPhoto(id, type) {
@@ -1467,6 +1759,12 @@ export async function updateLocation(id, locationData) {
   return fetchWithAuth(`/admin/locations/${id}`, {
     method: "PUT",
     body: JSON.stringify(locationData),
+  });
+}
+
+export async function deleteLocation(id) {
+  return fetchWithAuth(`/admin/locations/${id}`, {
+    method: "DELETE",
   });
 }
 
@@ -1581,7 +1879,7 @@ export async function getComplianceAlerts(filters = {}) {
   
   // Provider uses /staff/ endpoint if available, otherwise /admin/ (read-only)
   const url = (user.role === 'provider')
-    ? `/staff/compliance-alerts${queryParams ? `?${queryParams}` : ''}` // Will fallback to admin if not available
+    ? `/provider/compliance-alerts${queryParams ? `?${queryParams}` : ''}`
     : `/admin/compliance-alerts${queryParams ? `?${queryParams}` : ''}`;
   
   console.log(`✅ RBAC: Using ${url} for ${user.role} role`);
@@ -1591,7 +1889,7 @@ export async function getComplianceAlerts(filters = {}) {
 export async function getComplianceAlert(id) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const url = (user.role === 'provider')
-    ? `/staff/compliance-alerts/${id}`
+    ? `/provider/compliance-alerts/${id}`
     : `/admin/compliance-alerts/${id}`;
   
   console.log(`✅ RBAC: Using ${url} for ${user.role} role`);
@@ -1601,7 +1899,7 @@ export async function getComplianceAlert(id) {
 export async function getComplianceStatistics() {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const url = (user.role === 'provider')
-    ? `/staff/compliance-alerts/statistics`
+    ? `/provider/compliance-alerts/statistics`
     : `/admin/compliance-alerts/statistics`;
   
   console.log(`✅ RBAC: Using ${url} for ${user.role} role`);
@@ -1620,9 +1918,66 @@ export async function dismissComplianceAlert(id) {
   });
 }
 
-export async function exportComplianceAlertsToPDF(filters = {}) {
+// ✅ Audit Logs API Functions (Admin only - CRUD)
+export async function getAuditLogs(filters = {}) {
   const queryParams = new URLSearchParams(filters).toString();
-  const endpointUrl = `/admin/compliance-alerts/export/pdf${queryParams ? `?${queryParams}` : ''}`;
+  const url = `/admin/audit-logs${queryParams ? `?${queryParams}` : ''}`;
+  return fetchWithAuth(url);
+}
+
+export async function getAuditLog(id) {
+  return fetchWithAuth(`/admin/audit-logs/${id}`);
+}
+
+export async function createAuditLog(auditLogData) {
+  return fetchWithAuth("/admin/audit-logs", {
+    method: "POST",
+    body: JSON.stringify(auditLogData),
+  });
+}
+
+export async function updateAuditLog(id, auditLogData) {
+  return fetchWithAuth(`/admin/audit-logs/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(auditLogData),
+  });
+}
+
+export async function deleteAuditLog(id) {
+  return fetchWithAuth(`/admin/audit-logs/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getAuditLogStatistics() {
+  return fetchWithAuth("/admin/audit-logs/statistics");
+}
+
+export async function exportComplianceAlertsToPDF(filters = {}) {
+  // Filter out undefined/null values and "All" values
+  const cleanFilters = {};
+  Object.keys(filters).forEach(key => {
+    const value = filters[key];
+    if (value !== undefined && value !== null && value !== "All" && value !== "") {
+      cleanFilters[key] = value;
+    }
+  });
+  
+  const queryParams = new URLSearchParams(cleanFilters).toString();
+  
+  // Use role-based endpoint
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  let endpointUrl;
+  if (user.role === 'provider') {
+    endpointUrl = `/provider/compliance-alerts/export/pdf${queryParams ? `?${queryParams}` : ''}`;
+  } else if (user.role === 'admin') {
+    endpointUrl = `/admin/compliance-alerts/export/pdf${queryParams ? `?${queryParams}` : ''}`;
+  } else {
+    // For other roles, try admin endpoint (or throw error if not allowed)
+    endpointUrl = `/admin/compliance-alerts/export/pdf${queryParams ? `?${queryParams}` : ''}`;
+  }
+  
+  console.log(`📄 Exporting compliance alerts as ${user.role} from: ${endpointUrl}`);
   
   const token = localStorage.getItem("token");
   
@@ -1632,12 +1987,12 @@ export async function exportComplianceAlertsToPDF(filters = {}) {
       headers: {
         "Authorization": `Bearer ${token}`,
         "Accept": "application/pdf",
-        "Content-Type": "application/json",
       },
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to export PDF: ${response.status}`);
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Failed to export PDF: ${response.status} ${errorText}`);
     }
     
     const blob = await response.blob();
@@ -1653,6 +2008,60 @@ export async function exportComplianceAlertsToPDF(filters = {}) {
     return { success: true };
   } catch (error) {
     console.error("Error exporting PDF:", error);
+    throw error;
+  }
+}
+
+// Password Reset API Functions
+export async function forgotPassword(email) {
+  try {
+    const response = await fetch(`${API_BASE}/auth/forgot-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to send password reset link");
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Error sending password reset link:", error);
+    throw error;
+  }
+}
+
+export async function resetPassword(email, password, passwordConfirmation, token) {
+  try {
+    const response = await fetch(`${API_BASE}/auth/reset-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        password,
+        password_confirmation: passwordConfirmation,
+        token,
+      }),
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to reset password");
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Error resetting password:", error);
     throw error;
   }
 }

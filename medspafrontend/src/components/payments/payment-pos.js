@@ -423,10 +423,10 @@ export function PaymentPOS({ onPageChange }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6 p-4 lg:p-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-1 min-w-0">
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 lg:gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 lg:gap-4 flex-1 min-w-0">
           <Button
             variant="outline"
             onClick={() => onPageChange("dashboard")}
@@ -436,16 +436,16 @@ export function PaymentPOS({ onPageChange }) {
             Back to Dashboard
           </Button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold text-foreground">Point of Sale</h1>
-            <p className="text-muted-foreground mt-1">
+            <h1 className="text-xl lg:text-2xl xl:text-3xl font-bold text-foreground">Point of Sale</h1>
+            <p className="text-sm lg:text-base text-muted-foreground mt-1">
               Process payments and manage transactions
             </p>
           </div>
         </div>
-        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 w-full sm:w-auto shrink-0">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto shrink-0">
           <Button
             variant="outline"
-            className="border-border hover:bg-primary/5 hover:border-primary/30 w-full sm:w-auto"
+            className="border-border hover:bg-primary/5 hover:border-primary/30 w-full sm:w-auto text-sm lg:text-base"
             onClick={() => {
               // Navigate to Receipts page - shows only completed payments with receipt actions
               console.log('🔄 Navigating to Receipts page...');
@@ -457,7 +457,7 @@ export function PaymentPOS({ onPageChange }) {
           </Button>
           <Button
             variant="outline"
-            className="border-border hover:bg-primary/5 hover:border-primary/30 w-full sm:w-auto"
+            className="border-border hover:bg-primary/5 hover:border-primary/30 w-full sm:w-auto text-sm lg:text-base"
             onClick={() => {
               // Navigate to Transaction History page - shows all payment transactions
               console.log('🔄 Navigating to Transaction History page...');
@@ -470,10 +470,10 @@ export function PaymentPOS({ onPageChange }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
         {/* Services & Products */}
-        <div className="lg:col-span-2 order-2 lg:order-1">
-          <Card className="bg-card border-border">
+        <div className="xl:col-span-2 order-2 xl:order-1 min-w-0">
+          <Card className="bg-card border-border h-full">
             <CardHeader>
               <CardTitle className="text-foreground">Services & Products</CardTitle>
               <CardDescription>
@@ -498,30 +498,30 @@ export function PaymentPOS({ onPageChange }) {
                 </TabsList>
 
                 {/* Services Tab */}
-                <TabsContent value="services" className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <TabsContent value="services" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4 max-h-[calc(100vh-300px)] overflow-y-auto pr-2">
                     {services.map((service) => (
                       <div
                         key={service.id}
-                        className="p-4 border border-border rounded-lg hover:bg-muted/50 hover:border-primary/30 transition-colors"
+                        className="p-3 lg:p-4 border border-border rounded-lg hover:bg-muted/50 hover:border-primary/30 transition-colors"
                       >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <h3 className="font-medium text-foreground">{service.name}</h3>
-                            <p className="text-sm text-muted-foreground">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-medium text-foreground text-sm lg:text-base truncate">{service.name}</h3>
+                            <p className="text-xs lg:text-sm text-muted-foreground">
                               {service.category}
                             </p>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-xs lg:text-sm text-muted-foreground">
                               {service.duration} minutes
                             </p>
-                            <p className="text-lg font-semibold mt-2 text-foreground">
+                            <p className="text-base lg:text-lg font-semibold mt-2 text-foreground">
                               ${service.price}
                             </p>
                           </div>
                           <Button
                             size="sm"
                             onClick={() => addToCart(service, "service")}
-                            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
                           >
                             <Plus className="h-4 w-4" />
                           </Button>
@@ -532,25 +532,25 @@ export function PaymentPOS({ onPageChange }) {
                 </TabsContent>
 
                 {/* Products Tab */}
-                <TabsContent value="products" className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <TabsContent value="products" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4 max-h-[calc(100vh-300px)] overflow-y-auto pr-2">
                     {products.map((product) => (
                       <div
                         key={product.id}
-                        className="p-4 border border-border rounded-lg hover:bg-muted/50 hover:border-primary/30 transition-colors"
+                        className="p-3 lg:p-4 border border-border rounded-lg hover:bg-muted/50 hover:border-primary/30 transition-colors"
                       >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <h3 className="font-medium text-foreground">{product.name}</h3>
-                            <p className="text-sm text-muted-foreground">{product.category}</p>
-                            <p className="text-lg font-semibold mt-2 text-foreground">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-medium text-foreground text-sm lg:text-base truncate">{product.name}</h3>
+                            <p className="text-xs lg:text-sm text-muted-foreground">{product.category}</p>
+                            <p className="text-base lg:text-lg font-semibold mt-2 text-foreground">
                               ${product.price}
                             </p>
                           </div>
                           <Button
                             size="sm"
                             onClick={() => addToCart(product, "product")}
-                            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
                           >
                             <Plus className="h-4 w-4" />
                           </Button>
@@ -564,19 +564,19 @@ export function PaymentPOS({ onPageChange }) {
           </Card>
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6 order-1 lg:order-2">
+        {/* Sidebar - Transaction Panel */}
+        <div className="space-y-4 lg:space-y-6 order-1 xl:order-2 xl:max-w-md">
           {/* Client Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Client Information</CardTitle>
+          <Card className="sticky top-4 xl:sticky xl:top-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base lg:text-lg">Client Information</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className="space-y-3 lg:space-y-4">
                 <div>
-                  <Label>Select Client</Label>
+                  <Label className="text-sm">Select Client</Label>
                   <Select value={selectedClient} onValueChange={setSelectedClient}>
-                    <SelectTrigger>
+                    <SelectTrigger className="mt-1">
                       <SelectValue placeholder="Choose client..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -589,7 +589,12 @@ export function PaymentPOS({ onPageChange }) {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button variant="outline" size="sm" className="w-full">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full"
+                  onClick={() => onPageChange("clients/add")}
+                >
                   <User className="mr-2 h-4 w-4" />
                   Add New Client
                 </Button>
@@ -599,56 +604,59 @@ export function PaymentPOS({ onPageChange }) {
 
           {/* Transaction Items */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Transaction Items</CardTitle>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base lg:text-lg">Transaction Items</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className="space-y-3 max-h-[300px] lg:max-h-[400px] overflow-y-auto pr-2">
                 {cart.length === 0 ? (
-                  <div className="text-center p-8 text-muted-foreground">
-                    <Calculator className="mx-auto h-12 w-12 mb-4" />
-                    <p>No items in cart</p>
-                    <p className="text-sm">Add services or products to begin</p>
+                  <div className="text-center p-6 lg:p-8 text-muted-foreground">
+                    <Calculator className="mx-auto h-10 w-10 lg:h-12 lg:w-12 mb-3 lg:mb-4" />
+                    <p className="text-sm lg:text-base">No items in cart</p>
+                    <p className="text-xs lg:text-sm">Add services or products to begin</p>
                   </div>
                 ) : (
                   cart.map((item) => (
                     <div
                       key={`${item.id}-${item.type}`}
-                      className="flex items-center justify-between p-3 border rounded"
+                      className="flex items-center justify-between gap-2 p-2 lg:p-3 border rounded-lg"
                     >
-                      <div className="flex-1">
-                        <p className="font-medium">{item.name}</p>
-                        <div className="flex items-center space-x-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm lg:text-base truncate">{item.name}</p>
+                        <div className="flex items-center space-x-2 mt-1">
                           <Badge variant="outline" className="text-xs">
                             {item.type}
                           </Badge>
-                          <span className="text-sm text-muted-foreground">
+                          <span className="text-xs lg:text-sm text-muted-foreground">
                             ${item.price} each
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-1 lg:space-x-2 shrink-0">
                         <Button
                           size="sm"
                           variant="outline"
+                          className="h-7 w-7 lg:h-8 lg:w-8 p-0"
                           onClick={() => updateQuantity(item.id, item.type, -1)}
                         >
-                          <Minus className="h-3 w-3" />
+                          <Minus className="h-3 w-3 lg:h-4 lg:w-4" />
                         </Button>
-                        <span className="w-8 text-center">{item.quantity}</span>
+                        <span className="w-6 lg:w-8 text-center text-sm lg:text-base">{item.quantity}</span>
                         <Button
                           size="sm"
                           variant="outline"
+                          className="h-7 w-7 lg:h-8 lg:w-8 p-0"
                           onClick={() => updateQuantity(item.id, item.type, 1)}
                         >
-                          <Plus className="h-3 w-3" />
+                          <Plus className="h-3 w-3 lg:h-4 lg:w-4" />
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
+                          className="h-7 w-7 lg:h-8 lg:w-8 p-0"
                           onClick={() => removeFromCart(item.id, item.type)}
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Trash2 className="h-3 w-3 lg:h-4 lg:w-4" />
                         </Button>
                       </div>
                     </div>
@@ -661,15 +669,15 @@ export function PaymentPOS({ onPageChange }) {
           {/* Adjustments */}
           {cart.length > 0 && (
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Adjustments</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base lg:text-lg">Adjustments</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3 lg:space-y-4">
                 <div>
-                  <Label>Discount</Label>
-                  <div className="flex space-x-2">
+                  <Label className="text-sm">Discount</Label>
+                  <div className="flex gap-2 mt-1">
                     <Select value={discountType} onValueChange={setDiscountType}>
-                      <SelectTrigger className="w-[120px]">
+                      <SelectTrigger className="w-[100px] lg:w-[120px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -684,24 +692,27 @@ export function PaymentPOS({ onPageChange }) {
                         placeholder="0"
                         value={discountValue}
                         onChange={(e) => setDiscountValue(Number(e.target.value))}
+                        className="flex-1"
                       />
                     )}
                   </div>
                 </div>
 
                 <div>
-                  <Label>Tip Amount</Label>
-                  <div className="flex space-x-2">
+                  <Label className="text-sm">Tip Amount</Label>
+                  <div className="flex gap-2 mt-1">
                     <Input
                       type="number"
                       placeholder="0"
                       value={tipAmount}
                       onChange={(e) => setTipAmount(Number(e.target.value))}
+                      className="flex-1"
                     />
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setTipAmount(subtotal * 0.18)}
+                      className="text-xs lg:text-sm"
                     >
                       18%
                     </Button>
@@ -709,6 +720,7 @@ export function PaymentPOS({ onPageChange }) {
                       variant="outline"
                       size="sm"
                       onClick={() => setTipAmount(subtotal * 0.2)}
+                      className="text-xs lg:text-sm"
                     >
                       20%
                     </Button>
@@ -720,43 +732,43 @@ export function PaymentPOS({ onPageChange }) {
 
           {/* Payment Summary */}
           {cart.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Payment Summary</CardTitle>
+            <Card className="sticky bottom-4 xl:sticky xl:bottom-4">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base lg:text-lg">Payment Summary</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3 lg:space-y-4">
                 <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>Subtotal:</span>
-                    <span>${subtotal.toFixed(2)}</span>
+                  <div className="flex justify-between text-sm lg:text-base">
+                    <span className="text-muted-foreground">Subtotal:</span>
+                    <span className="font-medium">${subtotal.toFixed(2)}</span>
                   </div>
                   {discountAmount > 0 && (
-                    <div className="flex justify-between text-green-600">
+                    <div className="flex justify-between text-sm lg:text-base text-green-600">
                       <span>Discount:</span>
-                      <span>-${discountAmount.toFixed(2)}</span>
+                      <span className="font-medium">-${discountAmount.toFixed(2)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span>Tax (8.75%):</span>
-                    <span>${taxAmount.toFixed(2)}</span>
+                  <div className="flex justify-between text-sm lg:text-base">
+                    <span className="text-muted-foreground">Tax (8.75%):</span>
+                    <span className="font-medium">${taxAmount.toFixed(2)}</span>
                   </div>
                   {tipAmount > 0 && (
-                    <div className="flex justify-between">
-                      <span>Tip:</span>
-                      <span>${tipAmount.toFixed(2)}</span>
+                    <div className="flex justify-between text-sm lg:text-base">
+                      <span className="text-muted-foreground">Tip:</span>
+                      <span className="font-medium">${tipAmount.toFixed(2)}</span>
                     </div>
                   )}
                   <Separator />
-                  <div className="flex justify-between font-bold text-lg">
+                  <div className="flex justify-between font-bold text-base lg:text-lg pt-1">
                     <span>Total:</span>
                     <span>${total.toFixed(2)}</span>
                   </div>
                 </div>
 
                 <div>
-                  <Label>Payment Method</Label>
+                  <Label className="text-sm">Payment Method</Label>
                   <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                    <SelectTrigger>
+                    <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -771,8 +783,8 @@ export function PaymentPOS({ onPageChange }) {
                 {/* Inline Stripe Card Input - Only show when Card is selected */}
                 {paymentMethod === "card" && (
                   <div className="space-y-2">
-                    <Label htmlFor="card-element">Card Details</Label>
-                    <div className="p-3 border border-input rounded-md bg-background">
+                    <Label htmlFor="card-element" className="text-sm">Card Details</Label>
+                    <div className="p-2 lg:p-3 border border-input rounded-md bg-background">
                       <Elements 
                         stripe={stripePromise}
                         options={{
@@ -796,7 +808,7 @@ export function PaymentPOS({ onPageChange }) {
                 )}
 
                 <Button
-                  className="w-full"
+                  className="w-full mt-2"
                   size="lg"
                   onClick={handleCheckout}
                   disabled={!selectedClient || isProcessing}

@@ -55,105 +55,6 @@ import {
 } from "recharts";
 import { getStaffPerformanceReport } from "@/lib/api";
 
-// Mock staff performance data
-const staffPerformance = [
-  {
-    id: "1",
-    name: "Dr. Chen",
-    role: "Provider",
-    department: "Injectables",
-    appointments: 45,
-    revenue: 12500,
-    rating: 4.8,
-    clientSatisfaction: 95,
-    utilization: 88,
-    lastActive: "2025-12-21",
-    status: "active",
-  },
-  {
-    id: "2",
-    name: "Dr. Johnson",
-    role: "Provider",
-    department: "Skincare",
-    appointments: 38,
-    revenue: 9800,
-    rating: 4.6,
-    clientSatisfaction: 92,
-    utilization: 82,
-    lastActive: "2025-12-21",
-    status: "active",
-  },
-  {
-    id: "3",
-    name: "Dr. Smith",
-    role: "Provider",
-    department: "Laser",
-    appointments: 32,
-    revenue: 7200,
-    rating: 4.7,
-    clientSatisfaction: 94,
-    utilization: 75,
-    lastActive: "2025-12-20",
-    status: "active",
-  },
-  {
-    id: "4",
-    name: "Sarah Wilson",
-    role: "Receptionist",
-    department: "Front Desk",
-    appointments: 0,
-    revenue: 0,
-    rating: 4.5,
-    clientSatisfaction: 90,
-    utilization: 95,
-    lastActive: "2025-12-21",
-    status: "active",
-  },
-];
-
-const monthlyPerformance = [
-  { month: "Jan", appointments: 145, revenue: 32000, satisfaction: 92 },
-  { month: "Feb", appointments: 132, revenue: 28000, satisfaction: 89 },
-  { month: "Mar", appointments: 156, revenue: 35000, satisfaction: 94 },
-  { month: "Apr", appointments: 178, revenue: 41000, satisfaction: 96 },
-  { month: "May", appointments: 165, revenue: 38000, satisfaction: 93 },
-  { month: "Jun", appointments: 198, revenue: 47000, satisfaction: 95 },
-];
-
-const performanceMetrics = [
-  { metric: "Appointments", current: 198, previous: 165, change: 20.0 },
-  { metric: "Revenue", current: 47000, previous: 38000, change: 23.7 },
-  { metric: "Client Satisfaction", current: 95, previous: 93, change: 2.2 },
-  { metric: "Staff Utilization", current: 88, previous: 85, change: 3.5 },
-];
-
-const radarData = [
-  {
-    subject: "Appointments",
-    DrChen: 45,
-    DrJohnson: 38,
-    DrSmith: 32,
-  },
-  {
-    subject: "Revenue",
-    DrChen: 125,
-    DrJohnson: 98,
-    DrSmith: 72,
-  },
-  {
-    subject: "Satisfaction",
-    DrChen: 95,
-    DrJohnson: 92,
-    DrSmith: 94,
-  },
-  {
-    subject: "Utilization",
-    DrChen: 88,
-    DrJohnson: 82,
-    DrSmith: 75,
-  },
-];
-
 export function StaffPerformance({ onPageChange }) {
   const [staffPerformance, setStaffPerformance] = useState([]);
   const [monthlyPerformance, setMonthlyPerformance] = useState([]);
@@ -175,13 +76,119 @@ export function StaffPerformance({ onPageChange }) {
           format: 'chart'
         };
         const data = await getStaffPerformanceReport(params);
-        setStaffPerformance(data?.staffData || []);
+        console.log("📊 Staff Performance API Response:", data);
+        
+        // Extract staff data from response
+        const staffData = data?.staffData || data?.staff_performance || [];
+        console.log("✅ Staff Data Count:", staffData.length);
+        console.log("✅ Staff Data:", staffData);
+        
+        setStaffPerformance(staffData);
         setMonthlyPerformance(data?.monthlyData || []);
-        setPerformanceMetrics(data?.metricsData || []);
-        setRadarData(data?.radarData || []);
+        
+        // Ensure metricsData is an array
+        const metrics = data?.metricsData;
+        if (Array.isArray(metrics)) {
+          console.log("✅ Metrics Data (Array):", metrics);
+          setPerformanceMetrics(metrics);
+        } else if (metrics && typeof metrics === 'object') {
+          // Convert object to array format if needed
+          setPerformanceMetrics([]);
+          console.warn("⚠️ metricsData is an object, expected array. Converting...");
+        } else {
+          console.log("⚠️ No metrics data found");
+          setPerformanceMetrics([]);
+        }
+        
+        // Transform radar data from backend format to RadarChart format
+        // Backend returns: [{ name: "Dr. X", appointments: 45, revenue: 12500, ... }, ...]
+        // RadarChart needs: [{ subject: "Appointments", "Dr. X": 45, "Dr. Y": 38, ... }, ...]
+        const backendRadarData = data?.radarData || [];
+        let transformedRadarData = [];
+        
+        if (backendRadarData.length > 0) {
+          // Get all unique metrics from the first staff member
+          const radarMetrics = ['appointments', 'revenue', 'rating', 'satisfaction', 'completionRate'];
+          
+          transformedRadarData = radarMetrics.map(metric => {
+            const metricData = {
+              subject: metric.charAt(0).toUpperCase() + metric.slice(1).replace(/([A-Z])/g, ' $1').trim()
+            };
+            
+            // Add each staff member's value for this metric
+            backendRadarData.forEach(staff => {
+              const staffName = staff.name || 'Unknown';
+              let value = staff[metric] || 0;
+              
+              // Normalize values to 0-100 scale for better visualization
+              if (metric === 'appointments') {
+                // Normalize appointments (assuming max 100 appointments)
+                value = Math.min(100, (value / 100) * 100);
+              } else if (metric === 'revenue') {
+                // Normalize revenue (assuming max $50000)
+                value = Math.min(100, (value / 50000) * 100);
+              } else if (metric === 'rating') {
+                // Convert 5-star rating to 0-100 scale
+                value = (value / 5) * 100;
+              } else if (metric === 'satisfaction' || metric === 'completionRate') {
+                // Already in percentage (0-100)
+                value = Math.min(100, value);
+              }
+              
+              metricData[staffName] = Math.round(value);
+            });
+            
+            return metricData;
+          });
+        } else if (staffData.length > 0) {
+          // If no radar data from backend, generate from staffData
+          const providers = staffData.filter(s => s.role === 'provider').slice(0, 5); // Limit to 5 providers
+          
+          if (providers.length > 0) {
+            const radarMetrics = [
+              { key: 'appointments', label: 'Appointments', max: 100 },
+              { key: 'revenue', label: 'Revenue', max: 50000 },
+              { key: 'rating', label: 'Rating', max: 5, isPercentage: false },
+              { key: 'clientSatisfaction', label: 'Satisfaction', max: 100 },
+              { key: 'utilization', label: 'Utilization', max: 100 }
+            ];
+            
+            transformedRadarData = radarMetrics.map(metric => {
+              const metricData = { subject: metric.label };
+              
+              providers.forEach(staff => {
+                const staffName = staff.name || 'Unknown';
+                let value = staff[metric.key] || 0;
+                
+                // Normalize to 0-100 scale
+                if (metric.isPercentage === false && metric.max === 5) {
+                  // Rating: convert 5-star to 0-100
+                  value = (value / 5) * 100;
+                } else {
+                  // Percentage or count: normalize to 0-100
+                  value = Math.min(100, (value / metric.max) * 100);
+                }
+                
+                metricData[staffName] = Math.round(value);
+              });
+              
+              return metricData;
+            });
+          }
+        }
+        
+        console.log("✅ Transformed Radar Data:", transformedRadarData);
+        setRadarData(transformedRadarData);
       } catch (err) {
         console.error("Error loading staff performance:", err);
-        setError("Failed to load staff performance data.");
+        if (err.message && err.message.includes("Unauthenticated")) {
+          setError("Your session has expired. Please refresh the page or login again.");
+          // Clear invalid token
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+        } else {
+          setError("Failed to load staff performance data: " + (err.message || "Unknown error"));
+        }
       } finally {
         setLoading(false);
       }
@@ -220,11 +227,14 @@ export function StaffPerformance({ onPageChange }) {
   };
 
   const getStatusBadgeVariant = (status) => {
-    switch (status) {
+    if (!status) return "outline";
+    switch (status.toLowerCase()) {
       case "active":
         return "outline";
       case "inactive":
         return "secondary";
+      case "excellent":
+        return "default";
       default:
         return "outline";
     }
@@ -252,16 +262,24 @@ export function StaffPerformance({ onPageChange }) {
     return departmentFilter === "All" || staff.department === departmentFilter;
   });
 
-  const totalAppointments = staffPerformance.reduce((sum, staff) => sum + staff.appointments, 0);
-  const totalRevenue = staffPerformance.reduce((sum, staff) => sum + staff.revenue, 0);
-  const averageRating = staffPerformance.reduce((sum, staff) => sum + staff.rating, 0) / staffPerformance.length;
-  const averageSatisfaction = staffPerformance.reduce((sum, staff) => sum + staff.clientSatisfaction, 0) / staffPerformance.length;
+  const totalAppointments = staffPerformance.length > 0 
+    ? staffPerformance.reduce((sum, staff) => sum + (staff.appointments || 0), 0) 
+    : 0;
+  const totalRevenue = staffPerformance.length > 0 
+    ? staffPerformance.reduce((sum, staff) => sum + (staff.revenue || 0), 0) 
+    : 0;
+  const averageRating = staffPerformance.length > 0 
+    ? staffPerformance.reduce((sum, staff) => sum + (staff.rating || 0), 0) / staffPerformance.length 
+    : 0;
+  const averageSatisfaction = staffPerformance.length > 0 
+    ? staffPerformance.reduce((sum, staff) => sum + (staff.clientSatisfaction || 0), 0) / staffPerformance.length 
+    : 0;
 
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-2 text-muted-foreground">Loading staff performance...</span>
+        <span className="ml-2 text-muted-foreground">Loading staff performance data from database...</span>
       </div>
     );
   }
@@ -277,23 +295,25 @@ export function StaffPerformance({ onPageChange }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      {/* Header - Responsive */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <Button
             variant="outline"
             onClick={() => onPageChange("dashboard")}
-            className="border-border hover:bg-primary/5"
+            className="border-border hover:bg-primary/5 w-full sm:w-auto"
+            size="sm"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+            <span className="hidden sm:inline">Back to Dashboard</span>
+            <span className="sm:hidden">Back</span>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Staff Performance</h1>
-            <p className="text-muted-foreground">Monitor staff performance and productivity metrics</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Staff Performance</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">Monitor staff performance and productivity metrics</p>
           </div>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 w-full sm:w-auto">
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger className="w-[150px] bg-input-background border-border">
               <SelectValue />
@@ -317,7 +337,8 @@ export function StaffPerformance({ onPageChange }) {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {performanceMetrics.map((metric, index) => (
+        {Array.isArray(performanceMetrics) && performanceMetrics.length > 0 ? (
+          performanceMetrics.map((metric, index) => (
           <Card key={index} className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardTitle className="text-base text-foreground flex items-center">
@@ -342,7 +363,12 @@ export function StaffPerformance({ onPageChange }) {
               </div>
             </CardContent>
           </Card>
-        ))}
+          ))
+        ) : (
+          <div className="col-span-4 text-center py-8 text-muted-foreground">
+            No metrics data available
+          </div>
+        )}
       </div>
 
       {/* Performance Chart */}
@@ -381,37 +407,54 @@ export function StaffPerformance({ onPageChange }) {
           <CardTitle className="text-foreground">Provider Performance Comparison</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[400px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={radarData}>
-                <PolarGrid />
-                <PolarAngleAxis dataKey="subject" />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                <Radar
-                  name="Dr. Chen"
-                  dataKey="DrChen"
-                  stroke="#00A8E8"
-                  fill="#00A8E8"
-                  fillOpacity={0.3}
-                />
-                <Radar
-                  name="Dr. Johnson"
-                  dataKey="DrJohnson"
-                  stroke="#4ECDC4"
-                  fill="#4ECDC4"
-                  fillOpacity={0.3}
-                />
-                <Radar
-                  name="Dr. Smith"
-                  dataKey="DrSmith"
-                  stroke="#FF6B6B"
-                  fill="#FF6B6B"
-                  fillOpacity={0.3}
-                />
-                <Tooltip />
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
+          {radarData.length === 0 ? (
+            <div className="h-[400px] flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <p>No performance data available for comparison</p>
+                <p className="text-sm mt-2">Data will appear once providers have appointments</p>
+              </div>
+            </div>
+          ) : (
+            <div className="h-[400px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart data={radarData}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="subject" />
+                  <PolarRadiusAxis angle={30} domain={[0, 100]} />
+                  {(() => {
+                    // Get unique provider names from radar data
+                    const providerNames = new Set();
+                    radarData.forEach(item => {
+                      Object.keys(item).forEach(key => {
+                        if (key !== 'subject') {
+                          providerNames.add(key);
+                        }
+                      });
+                    });
+                    
+                    const colors = ['#00A8E8', '#4ECDC4', '#FF6B6B', '#FFD93D', '#6BCF7F', '#9B59B6', '#E74C3C'];
+                    let colorIndex = 0;
+                    
+                    return Array.from(providerNames).slice(0, 5).map((name, index) => {
+                      const color = colors[colorIndex % colors.length];
+                      colorIndex++;
+                      return (
+                        <Radar
+                          key={name}
+                          name={name}
+                          dataKey={name}
+                          stroke={color}
+                          fill={color}
+                          fillOpacity={0.3}
+                        />
+                      );
+                    });
+                  })()}
+                  <Tooltip />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -450,19 +493,26 @@ export function StaffPerformance({ onPageChange }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredStaff.map((staff) => (
-                  <TableRow key={staff.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium text-foreground">{staff.name}</div>
-                        <div className="text-sm text-muted-foreground">{staff.department}</div>
-                      </div>
+                {filteredStaff.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      {loading ? "Loading staff performance data from database..." : "No staff performance data available. Data will appear once staff members have appointments."}
                     </TableCell>
-                    <TableCell className="text-foreground">{staff.role}</TableCell>
-                    <TableCell className="text-foreground">{staff.appointments}</TableCell>
-                    <TableCell className="font-medium text-foreground">
-                      {formatCurrency(staff.revenue)}
-                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredStaff.map((staff) => (
+                    <TableRow key={staff.id || staff.staff_id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium text-foreground">{staff.name || 'Unknown'}</div>
+                          <div className="text-sm text-muted-foreground">{staff.department || staff.role || 'N/A'}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-foreground">{staff.role || 'N/A'}</TableCell>
+                      <TableCell className="text-foreground">{staff.appointments || staff.total_appointments || 0}</TableCell>
+                      <TableCell className="font-medium text-foreground">
+                        {formatCurrency(staff.revenue || staff.revenue_generated || 0)}
+                      </TableCell>
                     <TableCell>
                       <div className="flex items-center space-x-1">
                         {getRatingStars(staff.rating)}
@@ -487,19 +537,20 @@ export function StaffPerformance({ onPageChange }) {
                         <div className="w-16 bg-muted rounded-full h-2">
                           <div
                             className="bg-accent h-2 rounded-full"
-                            style={{ width: `${staff.utilization}%` }}
+                            style={{ width: `${staff.utilization || 0}%` }}
                           />
                         </div>
-                        <span className="text-sm text-foreground">{staff.utilization}%</span>
+                        <span className="text-sm text-foreground">{staff.utilization || 0}%</span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={getStatusBadgeVariant(staff.status)}>
-                        {staff.status.charAt(0).toUpperCase() + staff.status.slice(1)}
+                      <Badge variant={getStatusBadgeVariant(staff.status || 'active')}>
+                        {staff.status ? (staff.status.charAt(0).toUpperCase() + staff.status.slice(1)) : 'Active'}
                       </Badge>
                     </TableCell>
                   </TableRow>
-                ))}
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
@@ -516,19 +567,77 @@ export function StaffPerformance({ onPageChange }) {
             <div>
               <h4 className="font-semibold text-foreground mb-3">Performance Highlights</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>• Dr. Chen leads in appointments and revenue generation</li>
-                <li>• Average client satisfaction increased to 95%</li>
-                <li>• Staff utilization rate improved to 88%</li>
-                <li>• All providers maintain ratings above 4.5 stars</li>
+                {staffPerformance.length > 0 ? (
+                  <>
+                    {(() => {
+                      const topPerformer = staffPerformance.reduce((top, staff) => 
+                        (staff.appointments > (top?.appointments || 0)) ? staff : top, null
+                      );
+                      return topPerformer ? (
+                        <li>• {topPerformer.name} leads in appointments ({topPerformer.appointments}) and revenue ({formatCurrency(topPerformer.revenue)})</li>
+                      ) : null;
+                    })()}
+                    {averageSatisfaction > 0 && (
+                      <li>• Average client satisfaction: {averageSatisfaction.toFixed(1)}%</li>
+                    )}
+                    {(() => {
+                      const avgUtilization = staffPerformance.reduce((sum, staff) => sum + (staff.utilization || 0), 0) / staffPerformance.length;
+                      return avgUtilization > 0 ? (
+                        <li>• Average staff utilization: {avgUtilization.toFixed(1)}%</li>
+                      ) : null;
+                    })()}
+                    {averageRating > 0 && (
+                      <li>• Average staff rating: {averageRating.toFixed(1)} stars</li>
+                    )}
+                    {totalAppointments > 0 && (
+                      <li>• Total appointments: {totalAppointments}</li>
+                    )}
+                    {totalRevenue > 0 && (
+                      <li>• Total revenue: {formatCurrency(totalRevenue)}</li>
+                    )}
+                  </>
+                ) : (
+                  <li>• No performance data available</li>
+                )}
               </ul>
             </div>
             <div>
               <h4 className="font-semibold text-foreground mb-3">Recommendations</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>• Implement performance-based incentives</li>
-                <li>• Provide additional training for underperforming areas</li>
-                <li>• Recognize top performers with awards</li>
-                <li>• Schedule regular performance reviews</li>
+                {staffPerformance.length > 0 ? (
+                  <>
+                    {(() => {
+                      const lowPerformers = staffPerformance.filter(staff => 
+                        (staff.utilization || 0) < 50 || (staff.rating || 0) < 3.5
+                      );
+                      return lowPerformers.length > 0 ? (
+                        <li>• Provide additional training for {lowPerformers.length} underperforming staff member{lowPerformers.length > 1 ? 's' : ''}</li>
+                      ) : null;
+                    })()}
+                    {(() => {
+                      const topPerformers = staffPerformance.filter(staff => 
+                        (staff.rating || 0) >= 4.5 && (staff.utilization || 0) >= 75
+                      );
+                      return topPerformers.length > 0 ? (
+                        <li>• Recognize {topPerformers.length} top performer{topPerformers.length > 1 ? 's' : ''} with awards</li>
+                      ) : null;
+                    })()}
+                    <li>• Implement performance-based incentives</li>
+                    <li>• Schedule regular performance reviews</li>
+                    {(() => {
+                      const inactiveStaff = staffPerformance.filter(staff => 
+                        staff.status === 'inactive' || (staff.appointments || 0) === 0
+                      );
+                      return inactiveStaff.length > 0 ? (
+                        <li>• Review {inactiveStaff.length} inactive staff member{inactiveStaff.length > 1 ? 's' : ''}</li>
+                      ) : null;
+                    })()}
+                  </>
+                ) : (
+                  <>
+                    <li>• Load performance data to see recommendations</li>
+                  </>
+                )}
               </ul>
             </div>
           </div>

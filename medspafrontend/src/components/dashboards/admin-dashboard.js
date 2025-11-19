@@ -29,12 +29,7 @@ import {
   Line,
 } from "recharts";
 import { 
-  getAppointments, 
-  getClients, 
-  getPayments, 
   getStockAlerts,
-  getStockAlertStatistics,
-  getRevenueReport,
   getAdminDashboardStats
 } from "@/lib/api";
 
@@ -66,33 +61,25 @@ export function AdminDashboard({ onPageChange }) {
           return;
         }
         
-        // Fetch dashboard stats from dedicated endpoint (READ-ONLY)
+        // Fetch dashboard stats and stock alerts in parallel for faster loading
         console.log('📊 Admin: Fetching dashboard stats from /admin/dashboard...');
-        const dashboardRaw = await getAdminDashboardStats();
-        const dashboardStats = dashboardRaw?.data || dashboardRaw || {};
-        
-        // Also fetch detailed data for charts
-        const results = await Promise.allSettled([
-          getAppointments(),
-          getClients(),
-          getPayments(),
-          getStockAlerts(),
-          getStockAlertStatistics(),
-          getRevenueReport()
+        const [dashboardRaw, stockAlerts] = await Promise.all([
+          getAdminDashboardStats().catch(err => {
+            console.warn('Failed to load dashboard stats:', err);
+            return {};
+          }),
+          getStockAlerts().catch(err => {
+            console.warn('Stock alerts fetch failed:', err);
+            return [];
+          }),
         ]);
         
-        // Extract successful results
-        const appointments = results[0].status === 'fulfilled' ? results[0].value : [];
-        const clients = results[1].status === 'fulfilled' ? results[1].value : [];
-        const payments = results[2].status === 'fulfilled' ? results[2].value : [];
-        const stockAlerts = results[3].status === 'fulfilled' ? results[3].value : [];
-        const stockStats = results[4].status === 'fulfilled' ? results[4].value : {};
-        const revenueData = results[5].status === 'fulfilled' ? results[5].value : {};
+        const dashboardStats = dashboardRaw?.data || dashboardRaw || {};
 
-        // Use dashboard stats for KPIs (live MySQL data)
-        const totalRevenue = Number(dashboardStats?.total_revenue) || payments?.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) || 0;
-        const activeClientsCount = Number(dashboardStats?.total_clients) || clients?.filter(c => c.status === 'active').length || clients?.length || 0;
-        const appointmentsCount = Number(dashboardStats?.todays_appointments) || appointments?.length || 0;
+        // Use dashboard stats for KPIs (live MySQL data) - all data comes from single endpoint
+        const totalRevenue = Number(dashboardStats?.total_revenue) || 0;
+        const activeClientsCount = Number(dashboardStats?.total_clients) || 0;
+        const appointmentsCount = Number(dashboardStats?.todays_appointments) || 0;
         const alertsCount = Array.isArray(stockAlerts) ? stockAlerts.length : 0;
         
         console.log('✅ Admin dashboard: Live data loaded from MySQL', {
@@ -102,25 +89,26 @@ export function AdminDashboard({ onPageChange }) {
           alerts: alertsCount
         });
 
-        // Calculate revenue change (mock for now - would need historical data)
-        const revenueChange = "+12.5%";
-        const clientsChange = "+8.2%";
+        // Use real percentage changes from backend (current month vs previous month)
+        const revenueChange = dashboardStats?.revenue_change ?? 0;
+        const clientsChange = dashboardStats?.clients_change ?? 0;
+        const appointmentsChange = dashboardStats?.appointments_change ?? 0;
         
         setKpiData({
           revenue: { 
             value: `$${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, 
-            change: revenueChange, 
-            trend: "up" 
+            change: `${revenueChange >= 0 ? '+' : ''}${revenueChange.toFixed(1)}%`, 
+            trend: revenueChange >= 0 ? "up" : "down" 
           },
           activeClients: { 
             value: activeClientsCount.toString(), 
-            change: clientsChange, 
-            trend: "up" 
+            change: `${clientsChange >= 0 ? '+' : ''}${clientsChange.toFixed(1)}%`, 
+            trend: clientsChange >= 0 ? "up" : "down" 
           },
           appointments: { 
             value: appointmentsCount.toString(), 
-            change: "-2.1%", 
-            trend: "down" 
+            change: `${appointmentsChange >= 0 ? '+' : ''}${appointmentsChange.toFixed(1)}%`, 
+            trend: appointmentsChange >= 0 ? "up" : "down" 
           },
           inventoryAlerts: { 
             value: alertsCount.toString(), 
@@ -135,12 +123,17 @@ export function AdminDashboard({ onPageChange }) {
           : [];
         setMonthlyRevenue(monthly);
 
-        // Top services (would need service revenue aggregation from backend)
-        setTopServices([
-          { service: "Consultation", revenue: Math.round(totalRevenue * 0.3), sessions: Math.round(appointmentsCount * 0.2) },
-          { service: "Treatment", revenue: Math.round(totalRevenue * 0.4), sessions: Math.round(appointmentsCount * 0.3) },
-          { service: "Package", revenue: Math.round(totalRevenue * 0.3), sessions: Math.round(appointmentsCount * 0.5) },
-        ]);
+        // Top services from backend (real database data)
+        const topServicesData = Array.isArray(dashboardStats?.top_services) && dashboardStats.top_services.length > 0
+          ? dashboardStats.top_services.map((s) => ({
+              service: s.service || "Unknown",
+              revenue: Number(s.revenue) || 0,
+              sessions: Number(s.sessions) || 0,
+            }))
+          : [];
+        
+        // If no top services from backend, show empty array (no mock data)
+        setTopServices(topServicesData);
 
         // Recent alerts from stock alerts
         const formattedAlerts = stockAlerts?.slice(0, 3).map((alert, index) => ({
@@ -184,7 +177,7 @@ export function AdminDashboard({ onPageChange }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pl-14 sm:pl-0">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-foreground">
             Admin Dashboard

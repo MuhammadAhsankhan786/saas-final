@@ -29,6 +29,7 @@ const BeforeAfterPhotos = lazy(() => import("../components/treatments/before-aft
 import { PaymentPOS } from "../components/payments/payment-pos";
 import { Packages } from "../components/payments/packages";
 import { ServicesList } from "../components/services/services-list";
+import { ClientConsents } from "../components/consents/client-consents";
 const InventoryProducts = lazy(() => import("../components/inventory/inventory-products").then(m => ({ default: m.InventoryProducts })));
 const StockAlerts = lazy(() => import("../components/inventory/stock-alerts").then(m => ({ default: m.StockAlerts })));
 import { ProfileSettings } from "../components/settings/profile-settings";
@@ -44,6 +45,7 @@ const AuditLog = lazy(() => import("../components/compliance/audit-log").then(m 
 const ComplianceAlerts = lazy(() => import("../components/compliance/compliance-alerts").then(m => ({ default: m.ComplianceAlerts })));
 const PaymentHistory = lazy(() => import("../components/payments/payment-history").then(m => ({ default: m.PaymentHistory })));
 const Receipts = lazy(() => import("../components/payments/receipts").then(m => ({ default: m.Receipts })));
+const NotificationsList = lazy(() => import("../components/notifications/notifications-list").then(m => ({ default: m.NotificationsList })));
 
 // Loading fallback component
 const LoadingFallback = () => (
@@ -100,6 +102,18 @@ function AppContent() {
       setCurrentPage(savedPage);
     }
   }, [user?.role]);
+
+  // ✅ Provider can access "My Appointments" (appointments/list) but not calendar/book
+  useEffect(() => {
+    if (user?.role === "provider" && currentPage.startsWith("appointments")) {
+      // Allow appointments/list (My Appointments), block calendar and book
+      if (currentPage === "appointments/calendar" || currentPage === "appointments/book") {
+        console.log("🚫 Provider role blocked from accessing:", currentPage, "- redirecting to appointments/list");
+        setCurrentPage("appointments/list");
+      }
+      // appointments/list is allowed - no redirect needed
+    }
+  }, [currentPage, user?.role]);
 
   // ✅ Save current page to localStorage when it changes
   useEffect(() => {
@@ -165,9 +179,106 @@ function AppContent() {
   const renderPage = () => {
     if (currentPage === "dashboard") return renderDashboard();
 
-    // Admin UI isolation: admin can access view-only pages
-    // No specific blocking here - sidebar handles visibility
-    // Admin can view: dashboard, appointments, clients, payments, inventory, reports, compliance, settings/staff
+    // Client role: EXACTLY 6 modules only - Block all other routes
+    // Allowed: dashboard, appointments/list, payments/history, payments/packages, client/consents, settings/profile
+    // BLOCKED: Everything else (appointments/book, appointments/calendar, treatments, inventory, reports, compliance, staff, services, locations, etc.)
+    if (user?.role === "client") {
+      const allowedClientRoutes = new Set([
+        "dashboard",
+        "appointments/list",
+        "payments/history",
+        "payments/packages",
+        "client/consents",
+        "settings/profile",
+      ]);
+
+      // Block all other forbidden routes - redirect to dashboard
+      if (!allowedClientRoutes.has(currentPage)) {
+        console.log("🚫 Client blocked from accessing:", currentPage, "- redirecting to dashboard");
+        return renderDashboard();
+      }
+    }
+
+    // Reception role: EXACTLY 7 modules only - Block all other routes
+    // Allowed: dashboard, appointments/calendar, appointments/list, appointments/book, clients/list, clients/add, 
+    //          payments/pos, payments/history, payments/packages, settings/profile
+    // BLOCKED: Everything else (treatments, inventory, reports, compliance, staff, services CRUD, locations, etc.)
+    if (user?.role === "reception") {
+      const allowedReceptionRoutes = new Set([
+        "dashboard",
+        "appointments/calendar",
+        "appointments/list",
+        "appointments/book",
+        "clients/list",
+        "clients/add",
+        "payments/pos",
+        "payments/history",
+        "payments/packages",
+        "settings/profile",
+      ]);
+
+      // Block all other forbidden routes - redirect to dashboard
+      if (!allowedReceptionRoutes.has(currentPage)) {
+        console.log("🚫 Reception blocked from accessing:", currentPage, "- redirecting to dashboard");
+        return renderDashboard();
+      }
+    }
+
+    // Provider role: EXACTLY 7 modules only - Block all other routes
+    // Allowed: dashboard, appointments/list, clients/list, treatments/notes, treatments/consents, treatments/photos, inventory/products
+    // BLOCKED: Everything else (payments, reports, compliance, settings, notifications, services CRUD, locations, staff, etc.)
+    if (user?.role === "provider") {
+      const allowedProviderRoutes = new Set([
+        "dashboard",
+        "appointments/list",
+        "clients/list",
+        "treatments/notes",
+        "treatments/consents",
+        "treatments/photos",
+        "inventory/products",
+      ]);
+
+      // Block calendar and book - redirect to My Appointments
+      if (currentPage === "appointments/calendar" || currentPage === "appointments/book") {
+        return (
+          <ProtectedRoute allowedRoles={["provider"]}>
+            <AppointmentList onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
+      }
+
+      // Block all other forbidden routes - redirect to dashboard
+      if (!allowedProviderRoutes.has(currentPage)) {
+        console.log("🚫 Provider blocked from accessing:", currentPage, "- redirecting to dashboard");
+        return renderDashboard();
+      }
+    }
+
+    // Admin UI isolation: Block admin from accessing forbidden modules
+    // Admin can ONLY access: dashboard, appointments/list, clients/list, payments/history, 
+    // payments/packages, services/list, locations/list, settings/staff, reports/*, compliance/*, settings/*
+    // BLOCKED: treatments/*, payments/pos, appointments/calendar, appointments/book, clients/add, inventory/*
+    if (isAdmin) {
+      const forbiddenRoutes = [
+        "treatments/consents",
+        "treatments/notes",
+        "treatments/photos",
+        "payments/pos",
+        "appointments/calendar",
+        "appointments/book",
+        "clients/add",
+        "inventory/products",
+        "inventory/alerts",
+      ];
+      
+      // Block access to forbidden routes
+      if (forbiddenRoutes.includes(currentPage) || 
+          currentPage.startsWith("treatments/") ||
+          currentPage.startsWith("inventory/")) {
+        console.log("🚫 Admin blocked from accessing:", currentPage);
+        return renderDashboard();
+      }
+    }
 
     switch (currentPage) {
       // Admin-only pages
@@ -179,7 +290,7 @@ function AppContent() {
         );
       case "appointments/calendar":
         return (
-          <ProtectedRoute allowedRoles={["admin", "provider", "reception"]}>
+          <ProtectedRoute allowedRoles={["reception"]}>
             <AppointmentCalendar onPageChange={handlePageChange} />
           </ProtectedRoute>
         );
@@ -203,31 +314,31 @@ function AppContent() {
         );
       case "clients/add":
         return (
-          <ProtectedRoute allowedRoles={["admin", "reception"]}>
+          <ProtectedRoute allowedRoles={["reception"]}>
             <AddClient onPageChange={handlePageChange} />
           </ProtectedRoute>
         );
       case "treatments/consents":
         return (
-          <ProtectedRoute allowedRoles={["admin", "provider"]}>
+          <ProtectedRoute allowedRoles={["provider"]}>
             <ConsentForms onPageChange={handlePageChange} />
           </ProtectedRoute>
         );
       case "treatments/notes":
         return (
-          <ProtectedRoute allowedRoles={["admin", "provider"]}>
+          <ProtectedRoute allowedRoles={["provider"]}>
             <SOAPNotes onPageChange={handlePageChange} />
           </ProtectedRoute>
         );
       case "treatments/photos":
         return (
-          <ProtectedRoute allowedRoles={["admin", "provider"]}>
+          <ProtectedRoute allowedRoles={["provider"]}>
             <BeforeAfterPhotos onPageChange={handlePageChange} />
           </ProtectedRoute>
         );
       case "payments/pos":
         return (
-          <ProtectedRoute allowedRoles={["admin", "reception"]}>
+          <ProtectedRoute allowedRoles={["reception"]}>
             <PaymentPOS onPageChange={handlePageChange} />
           </ProtectedRoute>
         );
@@ -255,7 +366,7 @@ function AppContent() {
         );
       case "services/list":
         return (
-          <ProtectedRoute allowedRoles={["admin", "provider", "reception", "client"]}>
+          <ProtectedRoute allowedRoles={["admin", "reception", "client"]}>
             <ServicesList onPageChange={handlePageChange} />
           </ProtectedRoute>
         );
@@ -267,8 +378,10 @@ function AppContent() {
         );
       case "inventory/alerts":
         return (
-          <ProtectedRoute allowedRoles={["admin", "provider"]}>
-            <StockAlerts onPageChange={handlePageChange} />
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <Suspense fallback={<LoadingFallback />}>
+              <StockAlerts onPageChange={handlePageChange} />
+            </Suspense>
           </ProtectedRoute>
         );
       case "reports/revenue":
@@ -305,15 +418,29 @@ function AppContent() {
         );
       case "compliance/alerts":
         return (
-          <ProtectedRoute allowedRoles={["admin", "provider"]}>
+          <ProtectedRoute allowedRoles={["admin"]}>
             <Suspense fallback={<LoadingFallback />}>
               <ComplianceAlerts onPageChange={handlePageChange} />
             </Suspense>
           </ProtectedRoute>
         );
+      case "notifications":
+        return (
+          <ProtectedRoute allowedRoles={["admin", "reception", "client"]}>
+            <Suspense fallback={<LoadingFallback />}>
+              <NotificationsList onPageChange={handlePageChange} />
+            </Suspense>
+          </ProtectedRoute>
+        );
+      case "client/consents":
+        return (
+          <ProtectedRoute allowedRoles={["client"]}>
+            <ClientConsents onPageChange={handlePageChange} />
+          </ProtectedRoute>
+        );
       case "settings/profile":
         return (
-          <ProtectedRoute allowedRoles={["admin", "provider", "reception", "client"]}>
+          <ProtectedRoute allowedRoles={["admin", "reception", "client"]}>
             <ProfileSettings onPageChange={handlePageChange} />
           </ProtectedRoute>
         );

@@ -3,29 +3,24 @@
 /* Container with sidebar + main area */
 .appContainer {
   height: 100vh; /* h-screen */
-  display: grid; /* grid */
-  grid-template-columns: 16rem 1fr; /* sidebar 16rem + content */
+  display: flex; /* Use flex instead of grid for better control */
   background-color: var(--background); /* bg-background */
-}
-
-/* Responsive: Mobile and Tablet - stack layout */
-@media (max-width: 1024px) {
-  .appContainer {
-    grid-template-columns: 1fr; /* Full width on tablet */
-  }
-}
-
-/* Responsive: Mobile - ensure full width */
-@media (max-width: 768px) {
-  .appContainer {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* Main scrollable area */
 .mainArea {
+  flex: 1; /* Take remaining space */
   overflow: auto; /* overflow-auto */
   min-height: 0; /* min-h-0 */
+  width: 100%; /* Full width on mobile/tablet */
+}
+
+/* Responsive: Desktop - add left margin for fixed sidebar */
+@media (min-width: 1024px) {
+  .mainArea {
+    margin-left: 16rem; /* Match sidebar width (16rem = 256px) */
+    width: calc(100% - 16rem); /* Adjust width to account for sidebar */
+  }
 }
 
 /* Content padding */
@@ -33,10 +28,27 @@
   padding: 1.5rem; /* p-6 */
 }
 
-/* Responsive: Mobile - reduce padding */
-@media (max-width: 768px) {
+/* Responsive: Mobile - reduce padding and add top space for hamburger */
+@media (max-width: 1023px) {
   .contentPadding {
-    padding: 1rem; /* p-4 */
+    padding-top: 4.5rem; /* pt-18 - space for hamburger menu (top-4 + button height + gap) */
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-bottom: 1rem;
+  }
+}
+
+/* Responsive: Tablet - adjust top padding */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .contentPadding {
+    padding-top: 4rem; /* Slightly less on tablet */
+  }
+}
+
+/* Responsive: Desktop - normal padding */
+@media (min-width: 1024px) {
+  .contentPadding {
+    padding: 1.5rem; /* p-6 */
   }
 }
 

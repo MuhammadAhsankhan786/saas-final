@@ -62,6 +62,9 @@ import {
 export function ClientList({ onPageChange }) {
   const role = JSON.parse(localStorage.getItem("user") || "{}").role;
   const isAdmin = role === "admin";
+  const isProvider = role === "provider";
+  const isReception = role === "reception";
+  const canCreateClient = isReception; // Only reception can create clients
   const { confirm, dialog } = useConfirm();
   const [clients, setClients] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -240,35 +243,66 @@ export function ClientList({ onPageChange }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+      {/* Header - Responsive & Professional */}
+      <div className="space-y-3 sm:space-y-0">
+        {/* Mobile: Heading on top, Back button small icon */}
+        <div className="flex items-start justify-between gap-3 sm:hidden">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-foreground">Client Management</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Manage your client database and relationships</p>
+          </div>
           {JSON.parse(localStorage.getItem("user") || "{}").role !== "admin" && (
             <Button
-              variant="outline"
+              variant="ghost"
               onClick={() => onPageChange("dashboard")}
-              className="border-border hover:bg-primary/5 w-full sm:w-auto"
+              className="h-8 w-8 p-0 flex-shrink-0"
+              size="icon"
             >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Dashboard
+              <ArrowLeft className="h-4 w-4" />
+              <span className="sr-only">Back to Dashboard</span>
             </Button>
           )}
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">
-              Client Management
-            </h1>
-            <p className="text-muted-foreground">
-              Manage your client database and relationships
-            </p>
-          </div>
         </div>
-        {JSON.parse(localStorage.getItem("user") || "{}").role !== "admin" && (
-          <Button
-            onClick={openCreateModal}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
-          >
-            <UserPlus className="mr-2 h-4 w-4" /> Add Client
-          </Button>
+        
+        {/* Desktop: Original layout */}
+        <div className="hidden sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-row items-center gap-4">
+            {JSON.parse(localStorage.getItem("user") || "{}").role !== "admin" && (
+              <Button
+                variant="outline"
+                onClick={() => onPageChange("dashboard")}
+                className="border-border hover:bg-primary/5"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Dashboard
+              </Button>
+            )}
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Client Management</h1>
+              <p className="text-sm text-muted-foreground">Manage your client database and relationships</p>
+            </div>
+          </div>
+          {canCreateClient && (
+            <Button
+              onClick={openCreateModal}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            >
+              <UserPlus className="mr-2 h-4 w-4" /> Add Client
+            </Button>
+          )}
+        </div>
+        
+        {/* Mobile: Action buttons below heading */}
+        {canCreateClient && (
+          <div className="sm:hidden">
+            <Button
+              onClick={openCreateModal}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
+              size="sm"
+            >
+              <UserPlus className="mr-2 h-4 w-4" /> Add Client
+            </Button>
+          </div>
         )}
       </div>
 
@@ -471,17 +505,18 @@ export function ClientList({ onPageChange }) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {!isAdmin && (
+                          {/* Provider can only view, not edit/delete */}
+                          {!isAdmin && !isProvider && (
                             <DropdownMenuItem onClick={() => openEditModal(client)}>
                               <Edit className="mr-2 h-4 w-4" /> Edit Client
                             </DropdownMenuItem>
                           )}
-                          {!isAdmin && (
+                          {!isAdmin && !isProvider && (
                             <DropdownMenuItem onClick={() => onPageChange(`appointments/book?clientId=${client.id}`)}>
                               <Calendar className="mr-2 h-4 w-4" /> Book Appointment
                             </DropdownMenuItem>
                           )}
-                          {!isAdmin && (
+                          {!isAdmin && !isProvider && (
                             <DropdownMenuItem onClick={() => handleDeleteClient(client.id)}>
                               <Trash2 className="mr-2 h-4 w-4" /> Delete Client
                             </DropdownMenuItem>

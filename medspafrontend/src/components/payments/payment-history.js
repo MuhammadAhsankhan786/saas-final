@@ -48,11 +48,14 @@ import {
   Loader2,
 } from "lucide-react";
 import { getPayments, generateReceipt } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 const statusOptions = ["All", "completed", "pending", "refunded", "failed"];
 const paymentMethodOptions = ["All", "stripe", "cash"];
 
 export function PaymentHistory({ onPageChange }) {
+  const { user } = useAuth();
+  const isClient = user?.role === "client";
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -288,40 +291,93 @@ export function PaymentHistory({ onPageChange }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      {/* Header - Responsive & Professional */}
+      <div className="space-y-3 sm:space-y-0">
+        {/* Mobile: Heading on top, Back button small icon */}
+        <div className="flex items-start justify-between gap-3 sm:hidden">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-foreground">
+              {isClient ? "My Payments" : "Transaction History"}
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {isClient ? "View your payment history" : "View and manage all payment transactions"}
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            onClick={() => onPageChange("dashboard")}
+            className="h-8 w-8 p-0 flex-shrink-0"
+            size="icon"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="sr-only">Back to Dashboard</span>
+          </Button>
+        </div>
+        
+        {/* Desktop: Original layout */}
+        <div className="hidden sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-row items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => onPageChange("dashboard")}
+              className="border-border hover:bg-primary/5"
+              size="sm"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">
+                {isClient ? "My Payments" : "Transaction History"}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {isClient ? "View your payment history" : "View and manage all payment transactions"}
+              </p>
+            </div>
+          </div>
           <Button
             variant="outline"
-            onClick={() => onPageChange("dashboard")}
+            onClick={refreshPayments}
             className="border-border hover:bg-primary/5"
+            size="sm"
+            disabled={loading}
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              <>
+                <Search className="mr-2 h-4 w-4" />
+                Refresh
+              </>
+            )}
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Transaction History</h1>
-            <p className="text-muted-foreground">View and manage all payment transactions</p>
-          </div>
         </div>
-        <Button
-          variant="outline"
-          onClick={refreshPayments}
-          className="border-border hover:bg-primary/5"
-          disabled={loading}
-        >
-          {loading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading...
-            </>
-          ) : (
-            <>
-              <Search className="mr-2 h-4 w-4" />
-              Refresh
-            </>
-          )}
-        </Button>
+        
+        {/* Mobile: Refresh button below heading */}
+        <div className="sm:hidden">
+          <Button
+            variant="outline"
+            onClick={refreshPayments}
+            className="border-border hover:bg-primary/5 w-full"
+            size="sm"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              <>
+                <Search className="mr-2 h-4 w-4" />
+                Refresh
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}

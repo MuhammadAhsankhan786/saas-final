@@ -235,31 +235,60 @@ export default function AppointmentForm({ appointment = null, editingAppointment
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center space-x-4">
-        <Button
-          variant="outline"
-          onClick={() => {
-            console.log("🔙 Back to Dashboard clicked, changing page to 'dashboard'");
-            onPageChange("dashboard");
-          }}
-          className="border-border hover:bg-primary/5"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
-            {appointmentToEdit ? "Edit Appointment" : "Create Appointment"}
-          </h1>
-          <p className="text-muted-foreground">
-            {appointmentToEdit ? "Update appointment details" : "Schedule a new appointment"}
-          </p>
+    <div className="space-y-4 sm:space-y-6">
+      {/* Header - Responsive & Professional */}
+      <div className="space-y-3 sm:space-y-0">
+        {/* Mobile: Heading on top, Back button small icon */}
+        <div className="flex items-start justify-between gap-3 sm:hidden">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-foreground">
+              {appointmentToEdit ? "Edit Appointment" : "Create Appointment"}
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {appointmentToEdit ? "Update appointment details" : "Schedule a new appointment"}
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              console.log("🔙 Back to Dashboard clicked, changing page to 'dashboard'");
+              onPageChange("dashboard");
+            }}
+            className="h-8 w-8 p-0 flex-shrink-0"
+            size="icon"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="sr-only">Back to Dashboard</span>
+          </Button>
+        </div>
+        
+        {/* Desktop: Original layout */}
+        <div className="hidden sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-row items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                console.log("🔙 Back to Dashboard clicked, changing page to 'dashboard'");
+                onPageChange("dashboard");
+              }}
+              className="border-border hover:bg-primary/5"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">
+                {appointmentToEdit ? "Edit Appointment" : "Create Appointment"}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {appointmentToEdit ? "Update appointment details" : "Schedule a new appointment"}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
-      <Card className="w-full max-w-3xl mx-auto">
+      <Card className="w-full max-w-3xl mx-auto bg-card border-border">
         <CardHeader>
           <CardTitle>
             {appointmentToEdit ? "Edit Appointment" : "Create Appointment"}
@@ -388,14 +417,15 @@ export default function AppointmentForm({ appointment = null, editingAppointment
             </Select>
           </div>
 
-          {/* Date & Time */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Date & Time - Responsive */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block mb-1 font-medium">Date</label>
               <Input
                 type="date"
                 value={formData.date}
                 onChange={(e) => handleChange("date", e.target.value)}
+                className="bg-input-background border-border"
               />
             </div>
             <div>
@@ -404,6 +434,7 @@ export default function AppointmentForm({ appointment = null, editingAppointment
                 type="time"
                 value={formData.start_time}
                 onChange={(e) => handleChange("start_time", e.target.value)}
+                className="bg-input-background border-border"
               />
             </div>
             <div>
@@ -412,6 +443,7 @@ export default function AppointmentForm({ appointment = null, editingAppointment
                 type="time"
                 value={formData.end_time}
                 onChange={(e) => handleChange("end_time", e.target.value)}
+                className="bg-input-background border-border"
               />
             </div>
           </div>
@@ -447,8 +479,12 @@ export default function AppointmentForm({ appointment = null, editingAppointment
           {/* Error Message */}
           {error && <p className="text-red-600 text-sm">{error}</p>}
 
-          {/* Submit Button */}
-          <Button type="submit" disabled={loading} className="w-full">
+          {/* Submit Button - Responsive */}
+          <Button 
+            type="submit" 
+            disabled={loading} 
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
             {loading
               ? "Saving..."
               : appointmentToEdit

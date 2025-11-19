@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect } from "react";
 import {
   Card,
@@ -10,386 +9,328 @@ import {
 } from "../ui/card";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import {
-  FileText,
-  Camera,
-  AlertCircle,
-  CheckCircle,
-  User,
   Calendar,
+  Users,
+  Stethoscope,
+  FileText,
+  TrendingUp,
+  TrendingDown,
+  AlertCircle,
 } from "lucide-react";
-import { getAppointments, formatAppointmentForDisplay, getConsentForms } from "@/lib/api";
-import { notify } from "@/lib/toast";
-
-// Helper function to format time from ISO string
-const formatTime = (isoString) => {
-  if (!isoString) return "";
-  const date = new Date(isoString);
-  return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-};
-
-// Pending consents will be loaded from API
-
-const quickStats = {
-  todaysAppointments: 4,
-  pendingConsents: 3,
-  completedTreatments: 12,
-  totalRevenue: "$3,240",
-};
+import { 
+  getProviderDashboardStats
+} from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 export function ProviderDashboard({ onPageChange }) {
-  const [todaysAppointments, setTodaysAppointments] = useState([]);
-  const [pendingConsents, setPendingConsents] = useState([]);
+  const { user, logout } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [stats, setStats] = useState({
-    todaysAppointments: 0,
-    confirmed: 0,
-    completed: 0,
-    pending: 0,
+    todays_appointments: 0,
+    upcoming_appointments: 0,
+    total_clients: 0,
+    total_treatments: 0,
+    completed_treatments: 0,
+    pending_consents: 0,
+    appointments_change: 0,
+    recent_appointments: [],
   });
 
-  // Fetch live appointments data
+  // Fetch live data from backend
   useEffect(() => {
-    async function loadDashboardData() {
+    async function fetchDashboardData() {
       try {
         setLoading(true);
+        setError(null);
         
-        // Get today's date
-        const today = new Date();
-        const todayStr = today.toISOString().split('T')[0];
+        const token = localStorage.getItem("token");
         
-        console.log('🔍 Provider: Fetching appointments from /api/staff/appointments...');
-        
-        // Fetch both appointments and consent forms in parallel
-        const [appointmentsData, consentFormsData] = await Promise.all([
-          getAppointments({ date: todayStr }),
-          getConsentForms(),
-        ]);
-        
-        console.log('📋 Provider: Raw appointments data:', appointmentsData);
-        console.log('📋 Provider: Raw consent forms data:', consentFormsData);
-        
-        // Format appointments for display
-        const formattedAppointments = Array.isArray(appointmentsData)
-          ? appointmentsData.map(formatAppointmentForDisplay)
-          : [];
-        
-        // Filter today's appointments
-        const todayAppts = formattedAppointments.filter((apt) => {
-          if (!apt.start_time) return false;
-          const aptDate = new Date(apt.start_time);
-          const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-          const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
-          return aptDate >= todayStart && aptDate <= todayEnd;
-        });
-        
-        setTodaysAppointments(todayAppts);
-        
-        // Process consent forms - get pending ones
-        const consentForms = Array.isArray(consentFormsData) ? consentFormsData : [];
-        const pending = consentForms.filter((cf) => {
-          // Pending if not signed or expired
-          if (!cf.digital_signature || !cf.date_signed) {
-            return true;
-          }
-          const signedDate = new Date(cf.date_signed);
-          const expiryDate = new Date(signedDate);
-          expiryDate.setFullYear(expiryDate.getFullYear() + 1);
-          return new Date() > expiryDate; // Expired also counts as pending
-        }).slice(0, 3); // Show max 3 pending consents
-        
-        setPendingConsents(pending.map((cf) => ({
-          id: cf.id,
-          client: cf.client?.name || cf.client?.clientUser?.name || 'Unknown Client',
-          treatment: cf.service?.name || 'Treatment',
-          dueDate: cf.date_signed ? new Date(cf.date_signed).toLocaleDateString() : 'Pending',
-          priority: !cf.digital_signature ? 'high' : 'medium',
-        })));
-        
-        // Calculate stats
-        const confirmed = todayAppts.filter((a) => a.status === 'confirmed' || a.status === 'booked').length;
-        const completed = todayAppts.filter((a) => a.status === 'completed').length;
-        
-        setStats({
-          todaysAppointments: todayAppts.length,
-          confirmed,
-          completed,
-          pending: todayAppts.length - confirmed - completed,
-        });
-        
-        // Show success message
-        if (todayAppts.length > 0) {
-          console.log(`✅ Provider appointments fetched successfully (${todayAppts.length} records)`);
-          notify.success("Appointments loaded successfully");
-          console.log('✅ RBAC: Provider endpoints validated successfully');
-        } else {
-          console.warn('⚠️ No appointments found for today - data may be auto-seeding...');
+        if (!user || !token || user.role !== 'provider') {
+          console.log("⚠️ No authenticated provider found");
+          setLoading(false);
+          setError("Please log in as a provider to view this dashboard.");
+          return;
         }
+        
+        console.log('📊 Provider: Fetching dashboard stats from /provider/dashboard...');
+        const dashboardRaw = await getProviderDashboardStats();
+        const dashboardStats = dashboardRaw?.data || dashboardRaw || {};
+        
+        console.log('✅ Provider dashboard: Live data loaded', dashboardStats);
+
+        setStats({
+          todays_appointments: dashboardStats.todays_appointments || 0,
+          upcoming_appointments: dashboardStats.upcoming_appointments || 0,
+          total_clients: dashboardStats.total_clients || 0,
+          total_treatments: dashboardStats.total_treatments || 0,
+          completed_treatments: dashboardStats.completed_treatments || 0,
+          pending_consents: dashboardStats.pending_consents || 0,
+          appointments_change: dashboardStats.appointments_change || 0,
+          recent_appointments: dashboardStats.recent_appointments || [],
+        });
       } catch (error) {
-        console.error('❌ Error fetching provider appointments:', error);
+        console.error("❌ Error loading provider dashboard:", error);
+        const errorMessage = error.message || "Failed to load dashboard data";
+        setError(errorMessage);
+        
+        // If it's an authentication error, redirect to login
+        if (errorMessage.includes("Unauthorized") || errorMessage.includes("401")) {
+          console.log("🔐 Authentication failed, redirecting to login...");
+          setTimeout(() => {
+            logout();
+          }, 2000); // Give user time to see the error message
+        }
       } finally {
         setLoading(false);
       }
     }
-    
-    loadDashboardData();
-  }, []);
+
+    fetchDashboardData();
+  }, [user, logout]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-muted-foreground">Loading dashboard...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 space-y-4">
+        <AlertCircle className="h-12 w-12 text-destructive" />
+        <div className="text-center">
+          <h3 className="text-lg font-semibold text-foreground mb-2">Error Loading Dashboard</h3>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          {error.includes("Unauthorized") || error.includes("401") ? (
+            <p className="text-sm text-muted-foreground">Redirecting to login...</p>
+          ) : (
+            <Button onClick={() => window.location.reload()} variant="outline">
+              Retry
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Provider Dashboard</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-bold text-foreground">
+            Provider Dashboard
+          </h1>
           <p className="text-muted-foreground">
-            Today is Saturday, December 21, 2025
+            Welcome back! Here's your overview.
           </p>
         </div>
-        <Button onClick={() => onPageChange("treatments/notes")}>
-          <FileText className="mr-2 h-4 w-4" />
-          Add Treatment Notes
+        <Button
+          onClick={() => onPageChange("appointments/list")}
+          className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
+        >
+          <Calendar className="mr-2 h-4 w-4" /> View My Appointments
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Today's Appointments */}
+        <Card className="bg-card border-border">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-foreground">
               Today's Appointments
             </CardTitle>
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {loading ? "..." : stats.todaysAppointments}
+            <div className="text-2xl font-bold text-foreground">
+              {stats.todays_appointments}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {stats.completed} completed, {stats.confirmed} confirmed
+            <p className="text-xs text-muted-foreground mt-1">
+              Scheduled for today
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Upcoming Appointments */}
+        <Card className="bg-card border-border">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-foreground">
+              Upcoming Appointments
+            </CardTitle>
+            <Calendar className="h-4 w-4 text-accent" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-accent">
+              {stats.upcoming_appointments}
+            </div>
+            <div className="flex items-center mt-1">
+              {stats.appointments_change !== 0 && (
+                <span
+                  className={`text-xs flex items-center ${
+                    stats.appointments_change > 0
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {stats.appointments_change > 0 ? (
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3 mr-1" />
+                  )}
+                  {Math.abs(stats.appointments_change)}%
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground ml-2">
+                vs last month
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Total Clients */}
+        <Card className="bg-card border-border">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-foreground">
+              My Clients
+            </CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-foreground">
+              {stats.total_clients}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Unique clients
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Total Treatments */}
+        <Card className="bg-card border-border">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-foreground">
+              Total Treatments
+            </CardTitle>
+            <Stethoscope className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-foreground">
+              {stats.total_treatments}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats.completed_treatments} completed
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Pending Consents */}
+        <Card className="bg-card border-border">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-foreground">
               Pending Consents
             </CardTitle>
-            <AlertCircle className="h-4 w-4 text-yellow-600" />
+            <FileText className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">
-              1
+            <div className="text-2xl font-bold text-orange-500">
+              {stats.pending_consents}
             </div>
-            <p className="text-xs text-muted-foreground">Need attention</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Completed This Week
-            </CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {stats.completed}
-            </div>
-            <p className="text-xs text-muted-foreground">Treatments completed</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Weekly Revenue</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{quickStats.totalRevenue}</div>
-            <p className="text-xs text-muted-foreground">From treatments</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Require attention
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Today's Schedule + Pending Consents */}
-      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
+      {/* Recent Appointments */}
+      {stats.recent_appointments && stats.recent_appointments.length > 0 && (
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle>Today's Schedule</CardTitle>
-            <CardDescription>Your appointments for today</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {loading ? (
-              <div className="text-center py-8 text-muted-foreground">
-                Loading appointments...
-              </div>
-            ) : todaysAppointments.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No appointments scheduled for today
-              </div>
-            ) : (
-              todaysAppointments.map((appointment) => {
-                const clientName = appointment.client?.name || appointment.client?.clientUser?.name || "Unknown Client";
-                const serviceName = appointment.service?.name || "Unknown Service";
-                const notes = appointment.notes || "";
-                
-                return (
-                  <div
-                    key={appointment.id}
-                    className="flex items-center space-x-4 p-4 border rounded-lg"
-                  >
-                    <div className="text-center min-w-[60px]">
-                      <div className="font-semibold text-sm">
-                        {formatTime(appointment.start_time)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {appointment.service?.duration || 60} min
-                      </div>
-                    </div>
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback>
-                        {clientName
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                          .substring(0, 2)
-                          .toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <p className="font-medium truncate">
-                          {clientName}
-                        </p>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {serviceName}
-                      </p>
-                      {notes && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {notes}
-                        </p>
-                      )}
-                    </div>
-                    <Badge
-                      variant={
-                        appointment.status === "confirmed" || appointment.status === "booked"
-                          ? "outline"
-                          : appointment.status === "completed"
-                          ? "default"
-                          : appointment.status === "cancelled"
-                          ? "destructive"
-                          : "secondary"
-                      }
-                    >
-                      {appointment.status || "booked"}
-                    </Badge>
-                  </div>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Pending Consents</CardTitle>
+            <CardTitle className="text-foreground">Recent Appointments</CardTitle>
             <CardDescription>
-              Consent forms requiring your attention
+              Your latest scheduled appointments
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {pendingConsents.map((consent) => (
-              <div
-                key={consent.id}
-                className="flex items-center justify-between p-4 border rounded-lg"
-              >
-                <div>
-                  <p className="font-medium">{consent.client}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {consent.treatment}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Due: {consent.dueDate}
-                  </p>
-                </div>
-                <div className="flex items-center space-x-2">
+          <CardContent>
+            <div className="space-y-4">
+              {stats.recent_appointments.map((apt) => (
+                <div
+                  key={apt.id}
+                  className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-primary/5 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-foreground">
+                      {apt.client_name}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {apt.service_name}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {apt.start_time
+                        ? new Date(apt.start_time).toLocaleString()
+                        : "N/A"}
+                    </div>
+                  </div>
                   <Badge
                     variant={
-                      consent.priority === "high"
+                      apt.status === "completed"
+                        ? "default"
+                        : apt.status === "canceled"
                         ? "destructive"
-                        : consent.priority === "medium"
-                        ? "secondary"
-                        : "outline"
+                        : "secondary"
                     }
                   >
-                    {consent.priority}
+                    {apt.status}
                   </Badge>
-                  <Button
-                    size="sm"
-                    onClick={() => onPageChange("treatments/consents")}
-                  >
-                    Review
-                  </Button>
                 </div>
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => onPageChange("treatments/consents")}
-            >
-              View All Consents
-            </Button>
+              ))}
+            </div>
           </CardContent>
         </Card>
-      </div>
+      )}
 
       {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>Common provider tasks</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Button
-              variant="outline"
-              className="h-20 flex-col space-y-2"
-              onClick={() => onPageChange("treatments/notes")}
-            >
-              <FileText className="h-6 w-6" />
-              <span>SOAP Notes</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-20 flex-col space-y-2"
-              onClick={() => onPageChange("treatments/photos")}
-            >
-              <Camera className="h-6 w-6" />
-              <span>Before/After Photos</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-20 flex-col space-y-2"
-              onClick={() => onPageChange("treatments/consents")}
-            >
-              <FileText className="h-6 w-6" />
-              <span>Review Consents</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-20 flex-col space-y-2"
-              onClick={() => onPageChange("clients/list")}
-            >
-              <User className="h-6 w-6" />
-              <span>Client Profiles</span>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Button
+          variant="outline"
+          onClick={() => onPageChange("appointments/list")}
+          className="h-auto py-4 flex flex-col items-start"
+        >
+          <Calendar className="h-5 w-5 mb-2" />
+          <span className="font-semibold">My Appointments</span>
+          <span className="text-xs text-muted-foreground mt-1">
+            View and manage your appointments
+          </span>
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => onPageChange("treatments/notes")}
+          className="h-auto py-4 flex flex-col items-start"
+        >
+          <FileText className="h-5 w-5 mb-2" />
+          <span className="font-semibold">SOAP Notes</span>
+          <span className="text-xs text-muted-foreground mt-1">
+            Document treatment notes
+          </span>
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => onPageChange("clients/list")}
+          className="h-auto py-4 flex flex-col items-start"
+        >
+          <Users className="h-5 w-5 mb-2" />
+          <span className="font-semibold">My Clients</span>
+          <span className="text-xs text-muted-foreground mt-1">
+            View your assigned clients
+          </span>
+        </Button>
+      </div>
     </div>
   );
 }

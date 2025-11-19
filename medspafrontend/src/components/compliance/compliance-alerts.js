@@ -96,16 +96,32 @@ export function ComplianceAlerts({ onPageChange }) {
         if (statusFilter !== "All") filters.status = statusFilter;
         if (categoryFilter !== "All") filters.category = categoryFilter;
         
+        console.log("🔄 Fetching compliance alerts with filters:", filters);
+        
         const [alertsResponse, statsResponse] = await Promise.all([
           getComplianceAlerts(filters),
           getComplianceStatistics()
         ]);
         
-        // Extract data from response: { success: true, data: [...] }
-        const alerts = alertsResponse?.data || (Array.isArray(alertsResponse) ? alertsResponse : []);
+        console.log("📥 Raw alerts response:", alertsResponse);
+        console.log("📥 Raw stats response:", statsResponse);
+        
+        // Extract data from response: { success: true, data: [...] } or direct array
+        let alerts = [];
+        if (alertsResponse?.success && Array.isArray(alertsResponse.data)) {
+          alerts = alertsResponse.data;
+        } else if (Array.isArray(alertsResponse)) {
+          alerts = alertsResponse;
+        } else if (alertsResponse?.data && Array.isArray(alertsResponse.data)) {
+          alerts = alertsResponse.data;
+        }
+        
         const stats = statsResponse?.data || statsResponse || {};
         
-        setComplianceAlerts(Array.isArray(alerts) ? alerts : []);
+        console.log("✅ Processed alerts:", alerts.length);
+        console.log("✅ Processed stats:", stats);
+        
+        setComplianceAlerts(alerts);
         setStatistics(stats);
       } catch (error) {
         console.error("Error fetching compliance alerts:", error);
@@ -193,12 +209,25 @@ export function ComplianceAlerts({ onPageChange }) {
     if (confirm("Are you sure you want to mark this alert as resolved?")) {
       try {
         await resolveComplianceAlert(alertId);
-        // Refresh data
+        notify.success("Alert resolved successfully!");
+        
+        // Refresh data from database
+        console.log("🔄 Refreshing alerts after resolve...");
         const alertsResponse = await getComplianceAlerts();
         const statsResponse = await getComplianceStatistics();
-        const alerts = alertsResponse?.data || (Array.isArray(alertsResponse) ? alertsResponse : []);
+        
+        // Handle response format consistently
+        let alerts = [];
+        if (alertsResponse?.success && Array.isArray(alertsResponse.data)) {
+          alerts = alertsResponse.data;
+        } else if (Array.isArray(alertsResponse)) {
+          alerts = alertsResponse;
+        } else if (alertsResponse?.data && Array.isArray(alertsResponse.data)) {
+          alerts = alertsResponse.data;
+        }
+        
         const stats = statsResponse?.data || statsResponse || {};
-        setComplianceAlerts(Array.isArray(alerts) ? alerts : []);
+        setComplianceAlerts(alerts);
         setStatistics(stats);
         setIsDetailsOpen(false);
       } catch (error) {
@@ -212,12 +241,25 @@ export function ComplianceAlerts({ onPageChange }) {
     if (confirm("Are you sure you want to dismiss this alert?")) {
       try {
         await dismissComplianceAlert(alertId);
-        // Refresh data
+        notify.success("Alert dismissed successfully!");
+        
+        // Refresh data from database
+        console.log("🔄 Refreshing alerts after dismiss...");
         const alertsResponse = await getComplianceAlerts();
         const statsResponse = await getComplianceStatistics();
-        const alerts = alertsResponse?.data || (Array.isArray(alertsResponse) ? alertsResponse : []);
+        
+        // Handle response format consistently
+        let alerts = [];
+        if (alertsResponse?.success && Array.isArray(alertsResponse.data)) {
+          alerts = alertsResponse.data;
+        } else if (Array.isArray(alertsResponse)) {
+          alerts = alertsResponse;
+        } else if (alertsResponse?.data && Array.isArray(alertsResponse.data)) {
+          alerts = alertsResponse.data;
+        }
+        
         const stats = statsResponse?.data || statsResponse || {};
-        setComplianceAlerts(Array.isArray(alerts) ? alerts : []);
+        setComplianceAlerts(alerts);
         setStatistics(stats);
         setIsDetailsOpen(false);
       } catch (error) {
@@ -247,20 +289,22 @@ export function ComplianceAlerts({ onPageChange }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      {/* Header - Responsive */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <Button
             variant="outline"
             onClick={() => onPageChange("dashboard")}
-            className="border-border hover:bg-primary/5"
+            className="border-border hover:bg-primary/5 w-full sm:w-auto"
+            size="sm"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+            <span className="hidden sm:inline">Back to Dashboard</span>
+            <span className="sm:hidden">Back</span>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Compliance Alerts</h1>
-              <p className="text-muted-foreground">Monitor compliance requirements and regulatory alerts</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Compliance Alerts</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">Monitor compliance requirements and regulatory alerts</p>
           </div>
         </div>
       </div>
@@ -278,18 +322,6 @@ export function ComplianceAlerts({ onPageChange }) {
           <div className="text-muted-foreground">Loading compliance alerts...</div>
         </div>
       )}
-
-      {/* Export Button */}
-      <div className="flex justify-end">
-        <Button
-            onClick={handleExportAlerts}
-            disabled={loading}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground"
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export Alerts
-          </Button>
-      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -348,31 +380,31 @@ export function ComplianceAlerts({ onPageChange }) {
 
       {/* Filters */}
       <Card className="bg-card border-border">
-        <CardHeader>
+        <CardHeader className="pb-4">
           <CardTitle className="text-foreground flex items-center">
             <Filter className="mr-2 h-5 w-5" />
             Filters & Search
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="lg:col-span-2">
-              <Label htmlFor="search">Search Alerts</Label>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            <div className="lg:col-span-2 space-y-2">
+              <Label htmlFor="search" className="text-sm font-medium">Search Alerts</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="search"
                   placeholder="Search by title, description, or assignee..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={searchQuery || ""}
+                  onChange={(e) => setSearchQuery(e.target.value || "")}
                   className="pl-10 bg-input-background border-border"
                 />
               </div>
             </div>
             
-            <div>
-              <Label htmlFor="type">Alert Type</Label>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <div className="space-y-2">
+              <Label htmlFor="type" className="text-sm font-medium">Alert Type</Label>
+              <Select value={typeFilter || "All"} onValueChange={setTypeFilter}>
                 <SelectTrigger className="bg-input-background border-border">
                   <SelectValue />
                 </SelectTrigger>
@@ -386,9 +418,9 @@ export function ComplianceAlerts({ onPageChange }) {
               </Select>
             </div>
 
-            <div>
-              <Label htmlFor="priority">Priority</Label>
-              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <div className="space-y-2">
+              <Label htmlFor="priority" className="text-sm font-medium">Priority</Label>
+              <Select value={priorityFilter || "All"} onValueChange={setPriorityFilter}>
                 <SelectTrigger className="bg-input-background border-border">
                   <SelectValue />
                 </SelectTrigger>
@@ -402,9 +434,9 @@ export function ComplianceAlerts({ onPageChange }) {
               </Select>
             </div>
 
-            <div>
-              <Label htmlFor="status">Status</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <div className="space-y-2">
+              <Label htmlFor="status" className="text-sm font-medium">Status</Label>
+              <Select value={statusFilter || "All"} onValueChange={setStatusFilter}>
                 <SelectTrigger className="bg-input-background border-border">
                   <SelectValue />
                 </SelectTrigger>
@@ -423,10 +455,20 @@ export function ComplianceAlerts({ onPageChange }) {
 
       {/* Compliance Alerts Table */}
       <Card className="bg-card border-border">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-foreground">
             Compliance Alerts ({safeComplianceAlerts.length})
           </CardTitle>
+          <Button
+            onClick={handleExportAlerts}
+            disabled={loading}
+            variant="outline"
+            size="sm"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">

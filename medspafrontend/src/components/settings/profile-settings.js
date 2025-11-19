@@ -203,9 +203,8 @@ export function ProfileSettings({ onPageChange }) {
     handleNestedInputChange(parent, field, checked);
     
     try {
-      // Save immediately to backend
+      // Save immediately to backend - only send the specific field that changed
       const updatedData = {
-        ...profileData,
         [parent]: {
           ...profileData[parent],
           [field]: checked
@@ -242,45 +241,99 @@ export function ProfileSettings({ onPageChange }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      {/* Header - Responsive & Professional */}
+      <div className="space-y-3 sm:space-y-0">
+        {/* Mobile: Heading on top, Back button small icon */}
+        <div className="flex items-start justify-between gap-3 sm:hidden">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-foreground">Profile Settings</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Manage your personal information and preferences</p>
+          </div>
           <Button
-            variant="outline"
+            variant="ghost"
             onClick={() => onPageChange("dashboard")}
-            className="border-border hover:bg-primary/5"
+            className="h-8 w-8 p-0 flex-shrink-0"
+            size="icon"
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+            <ArrowLeft className="h-4 w-4" />
+            <span className="sr-only">Back to Dashboard</span>
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Profile Settings</h1>
-            <p className="text-muted-foreground">Manage your personal information and preferences</p>
+        </div>
+        
+        {/* Desktop: Original layout */}
+        <div className="hidden sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-row items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => onPageChange("dashboard")}
+              className="border-border hover:bg-primary/5"
+              size="sm"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Profile Settings</h1>
+              <p className="text-sm text-muted-foreground">Manage your personal information and preferences</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            {isEditing ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleCancel}
+                  className="border-border hover:bg-primary/5"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={() => setIsEditing(true)}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                Edit Profile
+              </Button>
+            )}
           </div>
         </div>
-        <div className="flex items-center space-x-2">
+        
+        {/* Mobile: Action buttons below heading */}
+        <div className="sm:hidden">
           {isEditing ? (
-            <>
+            <div className="flex gap-2">
               <Button
                 variant="outline"
                 onClick={handleCancel}
-                className="border-border hover:bg-primary/5"
+                className="border-border hover:bg-primary/5 flex-1"
+                size="sm"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground flex-1"
+                size="sm"
               >
                 <Save className="mr-2 h-4 w-4" />
-                {isSaving ? "Saving..." : "Save Changes"}
+                {isSaving ? "Saving..." : "Save"}
               </Button>
-            </>
+            </div>
           ) : (
             <Button
               onClick={() => setIsEditing(true)}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
+              size="sm"
             >
               Edit Profile
             </Button>

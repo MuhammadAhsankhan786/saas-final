@@ -95,10 +95,11 @@ export function AppointmentList({ onPageChange }) {
         // Log role-based endpoint usage
         const userRole = JSON.parse(localStorage.getItem("user") || "{}").role;
         if (userRole === "provider") {
-          console.log('🔍 Provider: Fetching appointments from /api/staff/appointments...');
+          console.log('🔍 Provider: Fetching appointments from /api/provider/appointments...');
         }
         
         const data = await getAppointments();
+        console.log(`📋 Provider appointments raw response:`, data);
         console.log("📋 Appointments fetched:", data);
 
         // Support both array and { data: [...] } response shapes
@@ -279,33 +280,119 @@ export function AppointmentList({ onPageChange }) {
     <>
       {dialog}
       <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+      {/* Header - Responsive & Professional */}
+      <div className="space-y-3 sm:space-y-0">
+        {/* Mobile: Heading on top, Back button small icon */}
+        <div className="flex items-start justify-between gap-3 sm:hidden">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-foreground">
+              {role === "client" ? "My Appointments" : "Appointments"}
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {role === "client" ? "View your appointments" : "View appointments"}
+            </p>
+          </div>
           {!isAdmin && (
             <Button
-              variant="outline"
-              onClick={() => onPageChange("appointments/calendar")}
-              className="border-border hover:bg-primary/5 w-full sm:w-auto"
+              variant="ghost"
+              onClick={() => {
+                if (isProvider) {
+                  onPageChange("dashboard");
+                } else if (role === "client") {
+                  onPageChange("dashboard");
+                } else {
+                  onPageChange("appointments/calendar");
+                }
+              }}
+              className="h-8 w-8 p-0 flex-shrink-0"
+              size="icon"
             >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Calendar
+              <ArrowLeft className="h-4 w-4" />
+              <span className="sr-only">Back to Dashboard</span>
             </Button>
           )}
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Appointments</h1>
-            <p className="text-muted-foreground">View appointments</p>
-          </div>
         </div>
-        {!isAdmin && (
-          <Button
-            onClick={() => onPageChange("appointments/book")}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
-          >
-            <Calendar className="mr-2 h-4 w-4" />
-            New Appointment
-          </Button>
-        )}
+        
+        {/* Desktop: Original layout */}
+        <div className="hidden sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-row items-center gap-4">
+            {!isAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (isProvider) {
+                    onPageChange("dashboard");
+                  } else if (role === "client") {
+                    onPageChange("dashboard");
+                  } else {
+                    onPageChange("appointments/calendar");
+                  }
+                }}
+                className="border-border hover:bg-primary/5"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Dashboard
+              </Button>
+            )}
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">
+                {role === "client" ? "My Appointments" : "Appointments"}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {role === "client" ? "View your appointments" : "View appointments"}
+              </p>
+            </div>
+          </div>
+          {isAdmin && (
+            <Button
+              onClick={() => {
+                setEditingAppointment(null);
+                setIsEditOpen(true);
+              }}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              size="sm"
+            >
+              <Calendar className="mr-2 h-4 w-4" />
+              New Appointment
+            </Button>
+          )}
+          {!isAdmin && role !== "client" && (
+            <Button
+              onClick={() => onPageChange("appointments/book")}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              size="sm"
+            >
+              <Calendar className="mr-2 h-4 w-4" />
+              New Appointment
+            </Button>
+          )}
+        </div>
+        
+        {/* Mobile: Action buttons below heading */}
+        <div className="sm:hidden">
+          {isAdmin ? (
+            <Button
+              onClick={() => {
+                setEditingAppointment(null);
+                setIsEditOpen(true);
+              }}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
+              size="sm"
+            >
+              <Calendar className="mr-2 h-4 w-4" />
+              New Appointment
+            </Button>
+          ) : role !== "client" ? (
+            <Button
+              onClick={() => onPageChange("appointments/book")}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
+              size="sm"
+            >
+              <Calendar className="mr-2 h-4 w-4" />
+              New Appointment
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {/* Filters */}
@@ -354,20 +441,21 @@ export function AppointmentList({ onPageChange }) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Service</TableHead>
-                  <TableHead>Package</TableHead>
-                  <TableHead>Start Time</TableHead>
-                  <TableHead>End Time</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="min-w-[120px]">Client</TableHead>
+                  <TableHead className="min-w-[120px]">Provider</TableHead>
+                  <TableHead className="min-w-[100px]">Location</TableHead>
+                  <TableHead className="min-w-[120px]">Service</TableHead>
+                  <TableHead className="min-w-[100px]">Package</TableHead>
+                  <TableHead className="min-w-[140px]">Start Time</TableHead>
+                  <TableHead className="min-w-[140px]">End Time</TableHead>
+                  <TableHead className="min-w-[100px]">Status</TableHead>
+                  <TableHead className="min-w-[150px]">Notes</TableHead>
+                  <TableHead className="min-w-[120px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -392,23 +480,117 @@ export function AppointmentList({ onPageChange }) {
                       key={appointment.id}
                       appointment={appointment}
                       onViewDetails={handleViewDetails}
-                      onEdit={isAdmin ? undefined : handleEditAppointment}
-                      onDelete={isAdmin ? undefined : handleDeleteAppointment}
-                      onStatusChange={isAdmin ? undefined : handleStatusChange}
+                      onEdit={handleEditAppointment}
+                      onDelete={handleDeleteAppointment}
+                      onStatusChange={handleStatusChange}
                       onRefresh={handleRefreshAppointments}
-                      readOnly={isAdmin}
+                      readOnly={false}
                     />
                   ))
                 )}
               </TableBody>
             </Table>
           </div>
+
+          {/* Mobile/Tablet Card View */}
+          <div className="md:hidden space-y-4">
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <span className="ml-2 text-muted-foreground">Loading appointments...</span>
+                </div>
+              </div>
+            ) : filteredAppointments.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No appointments found
+              </div>
+            ) : (
+              filteredAppointments.map((appointment) => (
+                <Card key={appointment.id} className="bg-card border-border">
+                  <CardContent className="pt-6">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="font-semibold text-foreground">
+                            {appointment.client?.name || `Client #${appointment.client_id}`}
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {appointment.service?.name || "N/A"}
+                          </p>
+                        </div>
+                        <Badge variant={appointment.status === "completed" ? "outline" : appointment.status === "cancelled" ? "destructive" : "default"}>
+                          {appointment.status}
+                        </Badge>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Provider:</span>
+                          <p className="font-medium text-foreground">{appointment.provider?.name || "N/A"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Location:</span>
+                          <p className="font-medium text-foreground">{appointment.location?.name || "N/A"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Start:</span>
+                          <p className="font-medium text-foreground">{formatDateTime(appointment.start_time).full}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">End:</span>
+                          <p className="font-medium text-foreground">{formatDateTime(appointment.end_time).full}</p>
+                        </div>
+                      </div>
+
+                      {appointment.notes && (
+                        <div>
+                          <span className="text-sm text-muted-foreground">Notes:</span>
+                          <p className="text-sm text-foreground">{appointment.notes}</p>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-end space-x-2 pt-2 border-t border-border">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewDetails(appointment)}
+                          className="border-border hover:bg-primary/5"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditAppointment(appointment)}
+                          className="border-border hover:bg-primary/5"
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteAppointment(appointment.id)}
+                          className="border-border hover:bg-destructive/5 hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
         </CardContent>
       </Card>
 
       {/* Appointment Details Dialog */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="bg-card border-border max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border max-w-2xl sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="pb-2">
             <DialogTitle>Appointment Details</DialogTitle>
             <DialogDescription className="text-xs">
@@ -541,29 +723,29 @@ export function AppointmentList({ onPageChange }) {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Appointment Dialog */}
+      {/* Create/Edit Appointment Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="bg-card border-border max-w-2xl sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Appointment</DialogTitle>
+            <DialogTitle>{editingAppointment ? "Edit Appointment" : "Create New Appointment"}</DialogTitle>
             <DialogDescription>
-              Update appointment details
+              {editingAppointment ? "Update appointment details" : "Fill in the details to create a new appointment"}
             </DialogDescription>
           </DialogHeader>
-          {editingAppointment && (
-            <AppointmentForm
-              editingAppointment={editingAppointment}
-              onPageChange={onPageChange}
-              onClose={() => {
-                setIsEditOpen(false);
-                setEditingAppointment(null);
-              }}
-              onSuccess={async () => {
-                // Refresh appointments list after successful update
-                await handleRefreshAppointments();
-              }}
-            />
-          )}
+          <AppointmentForm
+            editingAppointment={editingAppointment}
+            onPageChange={onPageChange}
+            onClose={() => {
+              setIsEditOpen(false);
+              setEditingAppointment(null);
+            }}
+            onSuccess={async () => {
+              // Refresh appointments list after successful create/update
+              await handleRefreshAppointments();
+              setIsEditOpen(false);
+              setEditingAppointment(null);
+            }}
+          />
         </DialogContent>
       </Dialog>
     </div>

@@ -145,8 +145,8 @@ export function Packages({ onPageChange }) {
     e.preventDefault();
     setError("");
 
-    // Check permissions
-    if (isClient || user?.role === 'admin') {
+    // Check permissions - only clients are blocked, admin can create
+    if (isClient) {
       notify.error("Access forbidden. You do not have permission to create packages.");
       return;
     }
@@ -184,8 +184,8 @@ export function Packages({ onPageChange }) {
     e.preventDefault();
     setError("");
 
-    // Check permissions
-    if (isClient || user?.role === 'admin') {
+    // Check permissions - only clients are blocked, admin can update
+    if (isClient) {
       notify.error("Access forbidden. You do not have permission to update packages.");
       return;
     }
@@ -216,8 +216,8 @@ export function Packages({ onPageChange }) {
   };
 
   const handleDeletePackage = async (packageId) => {
-    // Check if user is admin (read-only)
-    if (isClient || user?.role === 'admin') {
+    // Check permissions - only clients are blocked, admin can delete
+    if (isClient) {
       notify.error("Access forbidden. You do not have permission to delete packages.");
       return;
     }
@@ -373,46 +373,110 @@ export function Packages({ onPageChange }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      {/* Header - Responsive & Professional */}
+      <div className="space-y-3 sm:space-y-0">
+        {/* Mobile: Heading on top, Back button small icon */}
+        <div className="flex items-start justify-between gap-3 sm:hidden">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-foreground">
+              {isClient ? "My Packages" : "Packages & Services"}
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {isClient ? "View your purchased packages" : "Manage treatment packages and services"}
+            </p>
+          </div>
           <Button
-            variant="outline"
+            variant="ghost"
             onClick={() => onPageChange("dashboard")}
-            className="border-border hover:bg-primary/5"
+            className="h-8 w-8 p-0 flex-shrink-0"
+            size="icon"
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+            <ArrowLeft className="h-4 w-4" />
+            <span className="sr-only">Back to Dashboard</span>
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Packages & Services</h1>
-            <p className="text-muted-foreground">Manage treatment packages and services</p>
+        </div>
+        
+        {/* Desktop: Original layout */}
+        <div className="hidden sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-row items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => onPageChange("dashboard")}
+              className="border-border hover:bg-primary/5"
+              size="sm"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">
+                {isClient ? "My Packages" : "Packages & Services"}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {isClient ? "View your purchased packages" : "Manage treatment packages and services"}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={handleExportPackages}
+              className="border-border hover:bg-primary/5"
+              size="sm"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download Packages
+            </Button>
+            <Button
+              onClick={openAssignModal}
+              variant="outline"
+              className="border-border hover:bg-primary/5"
+              size="sm"
+            >
+              <Users className="mr-2 h-4 w-4" />
+              Assign Package
+            </Button>
+            <Button
+              onClick={openCreateModal}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              size="sm"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Package
+            </Button>
           </div>
         </div>
-        <div className="flex space-x-2">
-          <Button
-            variant="outline"
-            onClick={handleExportPackages}
-            className="border-border hover:bg-primary/5"
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Download Packages
-          </Button>
-          <Button
-            onClick={openAssignModal}
-            variant="outline"
-            className="border-border hover:bg-primary/5"
-          >
-            <Users className="mr-2 h-4 w-4" />
-            Assign Package
-          </Button>
-          <Button
-            onClick={openCreateModal}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Package
-          </Button>
+        
+        {/* Mobile: Action buttons below heading */}
+        <div className="flex flex-col gap-2 sm:hidden">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleExportPackages}
+              className="border-border hover:bg-primary/5 flex-1"
+              size="sm"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download
+            </Button>
+            <Button
+              onClick={openAssignModal}
+              variant="outline"
+              className="border-border hover:bg-primary/5 flex-1"
+              size="sm"
+            >
+              <Users className="mr-2 h-4 w-4" />
+              Assign
+            </Button>
+            <Button
+              onClick={openCreateModal}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground flex-1"
+              size="sm"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add
+            </Button>
+          </div>
         </div>
       </div>
 

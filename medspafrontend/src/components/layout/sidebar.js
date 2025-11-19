@@ -15,6 +15,8 @@ import {
   Stethoscope,
   User,
   LogOut,
+  Bell,
+  MapPin,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { Button } from "../ui/button";
@@ -228,6 +230,12 @@ const navigationItems = [
     ],
   },
   {
+    id: "notifications",
+    label: "Notifications",
+    icon: Bell,
+    roles: ["admin", "provider", "reception", "client"],
+  },
+  {
     id: "settings",
     label: "Settings",
     icon: Settings,
@@ -265,66 +273,217 @@ export function Sidebar({ currentPage, onPageChange }) {
     item.roles.includes(user.role)
   );
 
-  // Strict admin UI isolation: show only allowed modules and children (READ-ONLY ACCESS)
+  // Admin Core Sidebar: EXACTLY 11 items - Dashboard, Appointments (view), Clients (view), Payments (view), 
+  // Packages/Memberships, Services, Locations, Staff Management, Reports, Compliance, Settings
+  // NO OTHER ITEMS ALLOWED - NO Treatments, POS, Booking, Calendar, Inventory
   if (user.role === "admin") {
-    // Strict oversight-only menu for admin
-    const allowedTopLevel = new Set([
-      "dashboard",
-      "reports",
-      "compliance",
-      "settings",
-    ]);
-
-    const allowedChildrenByParent = {
-      "reports": new Set(["reports/revenue", "reports/clients", "reports/staff"]),
-      "compliance": new Set(["compliance/audit", "compliance/alerts"]),
-      // Settings will have no children for admin; Profile exposed as separate item below
-      "settings": new Set([]),
-    };
-
-    filteredNavItems = navigationItems
-      .filter((item) => allowedTopLevel.has(item.id))
-      .map((item) => {
-        const allowedChildren = allowedChildrenByParent[item.id];
-        const children = Array.isArray(item.children) ? item.children : [];
-        const prunedChildren = allowedChildren
-          ? children.filter((child) => allowedChildren.has(child.id))
-          : [];
-        return { ...item, children: prunedChildren };
-      });
-
-    // Add standalone Profile entry per RBAC spec
-    filteredNavItems.push({
-      id: "profile",
-      label: "Profile",
-      icon: User,
-      roles: ["admin"],
-      isDirectLink: true,
-    });
+    // Build admin sidebar with EXACTLY 11 items in the correct order
+    filteredNavItems = [
+      // 1. Dashboard
+      {
+        id: "dashboard",
+        label: "Dashboard",
+        icon: Home,
+        roles: ["admin"],
+      },
+      // 2. Appointments (view only)
+      {
+        id: "appointments",
+        label: "Appointments",
+        icon: Calendar,
+        roles: ["admin"],
+        children: [
+          {
+            id: "appointments/list",
+            label: "All Appointments",
+            icon: Calendar,
+            roles: ["admin"],
+          },
+        ],
+      },
+      // 3. Clients (view only)
+      {
+        id: "clients",
+        label: "Clients",
+        icon: Users,
+        roles: ["admin"],
+        children: [
+          {
+            id: "clients/list",
+            label: "Client List",
+            icon: Users,
+            roles: ["admin"],
+          },
+        ],
+      },
+      // 4. Payments (view only)
+      {
+        id: "payments",
+        label: "Payments",
+        icon: CreditCard,
+        roles: ["admin"],
+        children: [
+          {
+            id: "payments/history",
+            label: "Payment History",
+            icon: CreditCard,
+            roles: ["admin"],
+          },
+        ],
+      },
+      // 5. Packages / Memberships (MANAGE - CRUD)
+      {
+        id: "packages",
+        label: "Packages / Memberships",
+        icon: Package,
+        roles: ["admin"],
+        children: [
+          {
+            id: "payments/packages",
+            label: "Manage Packages",
+            icon: Package,
+            roles: ["admin"],
+          },
+        ],
+      },
+      // 6. Services (MANAGE - CRUD)
+      {
+        id: "services",
+        label: "Services",
+        icon: Stethoscope,
+        roles: ["admin"],
+        children: [
+          {
+            id: "services/list",
+            label: "All Services",
+            icon: Stethoscope,
+            roles: ["admin"],
+          },
+        ],
+      },
+      // 7. Locations (MANAGE - CRUD)
+      {
+        id: "locations",
+        label: "Locations",
+        icon: MapPin,
+        roles: ["admin"],
+        children: [
+          {
+            id: "locations/list",
+            label: "Manage Locations",
+            icon: MapPin,
+            roles: ["admin"],
+          },
+        ],
+      },
+      // 8. Staff Management (MANAGE - CRUD)
+      {
+        id: "staff",
+        label: "Staff Management",
+        icon: Users,
+        roles: ["admin"],
+        children: [
+          {
+            id: "settings/staff",
+            label: "Manage Staff",
+            icon: Users,
+            roles: ["admin"],
+          },
+        ],
+      },
+      // 9. Reports (VIEW)
+      {
+        id: "reports",
+        label: "Reports",
+        icon: BarChart3,
+        roles: ["admin"],
+        children: [
+          {
+            id: "reports/revenue",
+            label: "Revenue",
+            icon: BarChart3,
+            roles: ["admin"],
+          },
+          {
+            id: "reports/clients",
+            label: "Client Analytics",
+            icon: BarChart3,
+            roles: ["admin"],
+          },
+          {
+            id: "reports/staff",
+            label: "Staff Performance",
+            icon: BarChart3,
+            roles: ["admin"],
+          },
+        ],
+      },
+      // 10. Compliance (VIEW)
+      {
+        id: "compliance",
+        label: "Compliance",
+        icon: Shield,
+        roles: ["admin"],
+        children: [
+          {
+            id: "compliance/audit",
+            label: "Audit Log",
+            icon: Shield,
+            roles: ["admin"],
+          },
+          {
+            id: "compliance/alerts",
+            label: "Compliance Alerts",
+            icon: Shield,
+            roles: ["admin"],
+          },
+        ],
+      },
+      // 11. Settings
+      {
+        id: "settings",
+        label: "Settings",
+        icon: Settings,
+        roles: ["admin"],
+        children: [
+          {
+            id: "settings/profile",
+            label: "Profile",
+            icon: Settings,
+            roles: ["admin"],
+          },
+          {
+            id: "settings/business",
+            label: "Business",
+            icon: Settings,
+            roles: ["admin"],
+          },
+        ],
+      },
+    ];
   }
 
-  // Provider role UI isolation: show only provider-accessible modules
+  // Provider role UI isolation: EXACTLY 7 modules only
+  // 1. Dashboard, 2. My Appointments, 3. Clients, 4. SOAP Notes, 5. Consents, 6. Before/After Photos, 7. Inventory Usage
+  // NO Settings, NO Compliance, NO Notifications, NO Payments, NO Reports, NO Services CRUD
   if (user.role === "provider") {
     const allowedTopLevel = new Set([
-      "dashboard",
-      "appointments",
-      "treatments",
-      "inventory",
-      "compliance",
-      "settings",
+      "dashboard",        // 1. Dashboard
+      "appointments",     // 2. My Appointments
+      "clients",          // 3. Clients (view only)
+      "treatments",       // 4. SOAP Notes, 5. Consents, 6. Before/After Photos
+      "inventory",        // 7. Inventory Usage
     ]);
 
     const allowedChildrenByParent = {
-      // Appointments: View only (no calendar, no booking for provider)
+      // Appointments: My Appointments only (view own appointments)
       "appointments": new Set(["appointments/list"]),
-      // Treatments: Full CRUD access (own treatments only)
-      "treatments": new Set(["treatments/consents", "treatments/notes", "treatments/photos"]),
-      // Inventory: View only
-      "inventory": new Set(["inventory/products", "inventory/alerts"]),
-      // Compliance: View only (own alerts)
-      "compliance": new Set(["compliance/alerts"]),
-      // Settings: Profile only (no business, no staff management)
-      "settings": new Set(["settings/profile"]),
+      // Clients: View only (own clients, no add)
+      "clients": new Set(["clients/list"]),
+      // Treatments: SOAP Notes, Consents, Before/After Photos
+      "treatments": new Set(["treatments/notes", "treatments/consents", "treatments/photos"]),
+      // Inventory: View products and log usage (no management)
+      "inventory": new Set(["inventory/products"]), // Only products view, usage logging via API
     };
 
     filteredNavItems = navigationItems
@@ -339,124 +498,201 @@ export function Sidebar({ currentPage, onPageChange }) {
       });
   }
 
-  // Reception role UI isolation: Booking, Client Onboarding, Billing only
+  // Reception role UI isolation: EXACTLY 7 modules only
+  // 1. Dashboard, 2. Calendar/Appointments, 3. Book Appointment, 4. Clients (Add+List), 
+  // 5. POS/Payments, 6. Packages, 7. Settings
   if (user.role === "reception") {
-    const allowedTopLevel = new Set([
-      "dashboard",
-      "appointments",
-      "clients",
-      "payments",
-      "services",
-      "settings",
-    ]);
-
-    const allowedChildrenByParent = {
-      "appointments": new Set(["appointments/list", "appointments/book"]), // Remove calendar - not needed
-      "clients": new Set(["clients/list", "clients/add"]),
-      "payments": new Set(["payments/pos", "payments/history", "payments/packages"]),
-      "services": new Set(["services/list"]),
-      "settings": new Set(["settings/profile"]),
-    };
-
-    filteredNavItems = navigationItems
-      .filter((item) => allowedTopLevel.has(item.id))
-      .map((item) => {
-        const allowedChildren = allowedChildrenByParent[item.id];
-        const children = Array.isArray(item.children) ? item.children : [];
-        const prunedChildren = allowedChildren
-          ? children.filter((child) => allowedChildren.has(child.id))
-          : [];
-        return { ...item, children: prunedChildren };
-      });
+    filteredNavItems = [
+      // 1. Dashboard
+      {
+        id: "dashboard",
+        label: "Dashboard",
+        icon: Home,
+        roles: ["reception"],
+      },
+      // 2. Calendar / Appointments
+      {
+        id: "appointments",
+        label: "Appointments",
+        icon: Calendar,
+        roles: ["reception"],
+        children: [
+          {
+            id: "appointments/calendar",
+            label: "Calendar",
+            icon: Calendar,
+            roles: ["reception"],
+          },
+          {
+            id: "appointments/list",
+            label: "All Appointments",
+            icon: Calendar,
+            roles: ["reception"],
+          },
+        ],
+      },
+      // 3. Book Appointment
+      {
+        id: "appointments/book",
+        label: "Book Appointment",
+        icon: Calendar,
+        roles: ["reception"],
+        isDirectLink: true,
+      },
+      // 4. Clients (Add + List)
+      {
+        id: "clients",
+        label: "Clients",
+        icon: Users,
+        roles: ["reception"],
+        children: [
+          {
+            id: "clients/list",
+            label: "Client List",
+            icon: Users,
+            roles: ["reception"],
+          },
+          {
+            id: "clients/add",
+            label: "Add Client",
+            icon: Users,
+            roles: ["reception"],
+          },
+        ],
+      },
+      // 5. POS / Payments
+      {
+        id: "payments",
+        label: "Payments",
+        icon: CreditCard,
+        roles: ["reception"],
+        children: [
+          {
+            id: "payments/pos",
+            label: "Point of Sale",
+            icon: CreditCard,
+            roles: ["reception"],
+          },
+          {
+            id: "payments/history",
+            label: "Payment History",
+            icon: CreditCard,
+            roles: ["reception"],
+          },
+        ],
+      },
+      // 6. Packages
+      {
+        id: "payments/packages",
+        label: "Packages",
+        icon: Package,
+        roles: ["reception"],
+        isDirectLink: true,
+      },
+      // 7. Settings
+      {
+        id: "settings",
+        label: "Settings",
+        icon: Settings,
+        roles: ["reception"],
+        children: [
+          {
+            id: "settings/profile",
+            label: "Profile",
+            icon: Settings,
+            roles: ["reception"],
+          },
+        ],
+      },
+    ];
   }
 
-  // Client role UI isolation: show only self-service modules
+  // Client role UI isolation: EXACTLY 6 modules only
+  // 1. Dashboard, 2. My Appointments, 3. My Payments, 4. My Packages, 5. My Consents, 6. Profile/Settings
   if (user.role === "client") {
-    // For clients, exclude the parent "appointments" item and create direct links
-    filteredNavItems = navigationItems
-      .filter((item) => {
-        // Show dashboard, payments, settings
-        if (["dashboard", "payments", "settings"].includes(item.id)) {
-          return true;
-        }
-        // Hide the parent "appointments" item for clients
-        if (item.id === "appointments") {
-          return false;
-        }
-        // Hide other items
-        return false;
-      })
-      .map((item) => {
-        // Handle children for payments and settings
-        if (item.id === "payments") {
-          return {
-            ...item,
-            children: item.children?.filter(child => 
-              child.roles.includes(user.role)
-            ) || []
-          };
-        }
-        if (item.id === "settings") {
-          return {
-            ...item,
-            children: item.children?.filter(child => 
-              child.roles.includes(user.role)
-            ) || []
-          };
-        }
-        return item;
-      });
-    
-    // Add direct appointment links for clients (not as children of a parent)
-    const appointmentChildren = navigationItems
-      .find(item => item.id === "appointments")
-      ?.children || [];
-    
-    const clientAppointmentLinks = appointmentChildren
-      .filter(child => child.roles.includes(user.role))
-      .map(child => ({
-        ...child,
-        id: child.id,
-        label: child.label,
-        icon: child.icon,
-        roles: child.roles,
-        isDirectLink: true // Mark as direct link, not a child
-      }));
-    
-    // Insert appointment links after dashboard, before payments
-    const dashboardIndex = filteredNavItems.findIndex(item => item.id === "dashboard");
     filteredNavItems = [
-      ...filteredNavItems.slice(0, dashboardIndex + 1),
-      ...clientAppointmentLinks,
-      ...filteredNavItems.slice(dashboardIndex + 1)
+      // 1. Dashboard
+      {
+        id: "dashboard",
+        label: "Dashboard",
+        icon: Home,
+        roles: ["client"],
+      },
+      // 2. My Appointments (view only - no booking by default)
+      {
+        id: "appointments/list",
+        label: "My Appointments",
+        icon: Calendar,
+        roles: ["client"],
+        isDirectLink: true,
+      },
+      // 3. My Payments
+      {
+        id: "payments/history",
+        label: "My Payments",
+        icon: CreditCard,
+        roles: ["client"],
+        isDirectLink: true,
+      },
+      // 4. My Packages
+      {
+        id: "payments/packages",
+        label: "My Packages",
+        icon: Package,
+        roles: ["client"],
+        isDirectLink: true,
+      },
+      // 5. My Consents
+      {
+        id: "client/consents",
+        label: "My Consents",
+        icon: FileText,
+        roles: ["client"],
+        isDirectLink: true,
+      },
+      // 6. Profile / Settings
+      {
+        id: "settings",
+        label: "Settings",
+        icon: Settings,
+        roles: ["client"],
+        children: [
+          {
+            id: "settings/profile",
+            label: "Profile",
+            icon: Settings,
+            roles: ["client"],
+          },
+        ],
+      },
     ];
   }
 
   // Sidebar content component (reusable for desktop and mobile)
   const SidebarContent = () => (
     <>
-      {/* Logo */}
-      <div className="p-6 border-b border-sidebar-border">
-        <div className="flex items-center space-x-3">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden shadow-sm" style={{ background: 'linear-gradient(to right, #6b21a8, #14b8a6)' }}>
-            <span className="text-black font-bold text-[10px] leading-tight tracking-tight">PULSE</span>
+      {/* Logo - Responsive */}
+      <div className="p-4 sm:p-6 border-b border-sidebar-border">
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center overflow-hidden shadow-sm flex-shrink-0" style={{ background: 'linear-gradient(to right, #6b21a8, #14b8a6)' }}>
+            <span className="text-black font-bold text-[9px] sm:text-[10px] leading-tight tracking-tight">PULSE</span>
           </div>
-          <div>
-            <h1 className="font-bold text-lg text-primary">PULSE</h1>
-            <p className="text-xs text-muted-foreground">Management Platform</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="font-bold text-base sm:text-lg text-primary truncate">PULSE</h1>
+            <p className="text-[10px] sm:text-xs text-muted-foreground truncate">Management Platform</p>
           </div>
         </div>
       </div>
 
-      {/* User Info */}
-      <div className="p-6 border-b border-sidebar-border">
-        <div className="flex items-center space-x-3">
-          <Avatar>
+      {/* User Info - Responsive */}
+      <div className="p-4 sm:p-6 border-b border-sidebar-border">
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0">
             <AvatarImage 
               src={getUserAvatarUrl(user)} 
               alt={user.name} 
             />
-            <AvatarFallback className="bg-primary/10 text-primary">
+            <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
               {(user?.name || "")
                 .split(" ")
                 .map((n) => n[0])
@@ -464,14 +700,14 @@ export function Sidebar({ currentPage, onPageChange }) {
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="font-medium truncate text-foreground">{user.name}</p>
-            <p className="text-sm text-muted-foreground capitalize">{user.role}</p>
+            <p className="font-medium truncate text-foreground text-sm sm:text-base">{user.name}</p>
+            <p className="text-xs sm:text-sm text-muted-foreground capitalize truncate">{user.role}</p>
           </div>
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+      {/* Navigation - Responsive */}
+      <nav className="flex-1 p-2 sm:p-4 space-y-1 sm:space-y-2 overflow-y-auto">
         {filteredNavItems.map((item) => {
           const isActive = currentPage === item.id;
           
@@ -479,15 +715,16 @@ export function Sidebar({ currentPage, onPageChange }) {
             <div key={item.id}>
               <Button
                 variant={isActive ? "default" : "ghost"}
-                className={`w-full justify-start ${
+                size="sm"
+                className={`w-full justify-start text-sm sm:text-base ${
                   isActive
                     ? "bg-primary text-primary-foreground hover:bg-primary/90"
                     : "text-foreground hover:bg-primary/5 hover:text-primary"
                 }`}
                 data-nav-item={item.label}
                 onClick={() => {
-                  // Close mobile drawer on navigation
-                  if (isMobile) {
+                  // Close mobile/tablet drawer on navigation
+                  if (isMobile || (typeof window !== 'undefined' && window.innerWidth < 1024)) {
                     const event = new CustomEvent('closeSidebar');
                     window.dispatchEvent(event);
                   }
@@ -500,13 +737,22 @@ export function Sidebar({ currentPage, onPageChange }) {
                   }
                   
                   // For menu items with children (like Payments, Settings), navigate to first allowed child
+                  // BUT: If a child is already active, keep it active (don't navigate to first child)
                   if (item.children && item.children.length > 0) {
-                    const firstAllowedChild = item.children.find(child => child.roles.includes(user.role));
-                    if (firstAllowedChild) {
-                      onPageChange(firstAllowedChild.id);
-                      console.log("✅ Sidebar navigation - clicked parent, navigating to child:", firstAllowedChild.id);
+                    const activeChild = item.children.find(child => child.id === currentPage && child.roles.includes(user.role));
+                    if (activeChild) {
+                      // Child is already active, keep it active
+                      onPageChange(activeChild.id);
+                      console.log("✅ Sidebar navigation - keeping active child:", activeChild.id);
                     } else {
-                      onPageChange(item.id);
+                      // No child is active, navigate to first allowed child
+                      const firstAllowedChild = item.children.find(child => child.roles.includes(user.role));
+                      if (firstAllowedChild) {
+                        onPageChange(firstAllowedChild.id);
+                        console.log("✅ Sidebar navigation - clicked parent, navigating to child:", firstAllowedChild.id);
+                      } else {
+                        onPageChange(item.id);
+                      }
                     }
                   } else {
                     onPageChange(item.id);
@@ -514,12 +760,12 @@ export function Sidebar({ currentPage, onPageChange }) {
                   console.log("✅ Sidebar navigation working — route changed successfully!");
                 }}
               >
-                <item.icon className="mr-3 h-4 w-4" />
-                {item.label}
+                <item.icon className="mr-2 sm:mr-3 h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+                <span className="truncate">{item.label}</span>
               </Button>
 
               {item.children && item.children.length > 0 && !item.isDirectLink && (
-                <div className="ml-4 mt-1 space-y-1">
+                <div className="ml-2 sm:ml-4 mt-1 space-y-1">
                   {item.children
                     .filter((child) => child.roles.includes(user.role))
                     .map((child) => {
@@ -530,14 +776,14 @@ export function Sidebar({ currentPage, onPageChange }) {
                           key={child.id}
                           variant={isChildActive ? "default" : "ghost"}
                           size="sm"
-                          className={`w-full justify-start ${
+                          className={`w-full justify-start text-xs sm:text-sm ${
                             isChildActive
                               ? "bg-primary text-primary-foreground hover:bg-primary/90"
                               : "text-foreground hover:bg-primary/5 hover:text-primary"
                           }`}
                           data-nav-item={child.label}
                           onClick={() => {
-                            if (isMobile) {
+                            if (isMobile || (typeof window !== 'undefined' && window.innerWidth < 1024)) {
                               const event = new CustomEvent('closeSidebar');
                               window.dispatchEvent(event);
                             }
@@ -545,8 +791,8 @@ export function Sidebar({ currentPage, onPageChange }) {
                             console.log("✅ Sidebar navigation working — route changed successfully!");
                           }}
                         >
-                          <child.icon className="mr-3 h-3 w-3" />
-                          {child.label}
+                          <child.icon className="mr-2 sm:mr-3 h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                          <span className="truncate">{child.label}</span>
                         </Button>
                       );
                     })}
@@ -557,34 +803,71 @@ export function Sidebar({ currentPage, onPageChange }) {
         })}
       </nav>
 
-      {/* Logout */}
-      <div className="p-4 border-t border-sidebar-border">
+      {/* Logout - Responsive */}
+      <div className="p-2 sm:p-4 border-t border-sidebar-border">
         <Button
           variant="ghost"
-          className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
+          size="sm"
+          className="w-full justify-start text-sm sm:text-base text-destructive hover:text-destructive hover:bg-destructive/10"
           onClick={logout}
         >
-          <LogOut className="mr-3 h-4 w-4" />
-          Sign Out
+          <LogOut className="mr-2 sm:mr-3 h-4 w-4 flex-shrink-0" />
+          <span className="truncate">Sign Out</span>
         </Button>
       </div>
     </>
   );
 
-  // Mobile: Use Sheet drawer
-  if (isMobile) {
+  // Mobile & Tablet: Use Sheet drawer (hamburger menu)
+  // Show hamburger on screens < 1024px (mobile + tablet)
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [isTabletOrMobile, setIsTabletOrMobile] = React.useState(
+    typeof window !== 'undefined' ? window.innerWidth < 1024 : false
+  );
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      const isSmallScreen = window.innerWidth < 1024;
+      setIsTabletOrMobile(isSmallScreen);
+      // Auto-close drawer on resize to desktop
+      if (!isSmallScreen) {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    // Set initial state
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Close sidebar on navigation (mobile/tablet)
+  React.useEffect(() => {
+    const handleCloseSidebar = () => {
+      if (isTabletOrMobile) {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener('closeSidebar', handleCloseSidebar);
+    return () => window.removeEventListener('closeSidebar', handleCloseSidebar);
+  }, [isTabletOrMobile]);
+
+  if (isTabletOrMobile) {
     return (
-      <Sheet>
+      <Sheet open={isOpen} onOpenChange={setIsOpen}>
         <SheetTrigger asChild>
           <Button
             variant="ghost"
             size="icon"
-            className="fixed top-4 left-4 z-50 lg:hidden"
+            className="fixed top-4 left-4 z-50 md:top-4 md:left-4"
+            aria-label="Open menu"
           >
             <Menu className="h-6 w-6" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-64 p-0 bg-sidebar border-sidebar-border">
+        <SheetContent 
+          side="left" 
+          className="w-64 sm:w-72 p-0 bg-sidebar border-sidebar-border overflow-y-auto"
+        >
           <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
           <SheetDescription className="sr-only">Main navigation menu for MediSpa platform</SheetDescription>
           <div className="h-screen flex flex-col">
@@ -595,9 +878,9 @@ export function Sidebar({ currentPage, onPageChange }) {
     );
   }
 
-  // Desktop: Fixed sidebar
+  // Desktop (>= 1024px): Fixed sidebar
   return (
-    <div className="hidden lg:flex w-64 h-screen bg-sidebar border-r border-sidebar-border flex-col">
+    <div className="hidden lg:flex w-64 h-screen bg-sidebar border-r border-sidebar-border flex-col fixed left-0 top-0">
       <SidebarContent />
     </div>
   );

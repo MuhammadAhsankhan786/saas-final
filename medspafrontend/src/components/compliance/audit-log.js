@@ -27,6 +27,14 @@ import {
   TableRow,
 } from "../ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Textarea } from "../ui/textarea";
+import {
   ArrowLeft,
   Shield,
   Search,
@@ -39,8 +47,21 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
+  Plus,
+  Edit,
+  Trash2,
+  X,
 } from "lucide-react";
-import { fetchWithAuth } from "../../lib/api";
+import { 
+  fetchWithAuth,
+  getAuditLogs,
+  getAuditLog,
+  createAuditLog,
+  updateAuditLog,
+  deleteAuditLog,
+  getAuditLogStatistics,
+  getUsers
+} from "../../lib/api";
 import { notify } from "../../lib/toast";
 
 const actionTypes = ["All", "create", "update", "delete", "login", "logout"];
@@ -53,12 +74,39 @@ export function AuditLog({ onPageChange }) {
   const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ total: 0, today: 0, this_week: 0, this_month: 0 });
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingLog, setEditingLog] = useState(null);
+  const [formData, setFormData] = useState({
+    user_id: "",
+    action: "create",
+    table_name: "",
+    record_id: "",
+    old_data: null,
+    new_data: null,
+  });
+  const [users, setUsers] = useState([]);
 
-  // Fetch audit logs from API
+  // Fetch audit logs from API on mount
   useEffect(() => {
     fetchAuditLogs();
     fetchStatistics();
+    fetchUsers();
   }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const response = await getUsers();
+      const usersList = Array.isArray(response) ? response : (response?.data || []);
+      setUsers(usersList);
+    } catch (error) {
+      console.error("Failed to fetch users:", error);
+    }
+  };
+
+  // Refetch when filters change
+  useEffect(() => {
+    fetchAuditLogs();
+  }, [actionFilter, tableFilter, searchQuery]);
 
   const fetchAuditLogs = async () => {
     try {
@@ -68,12 +116,14 @@ export function AuditLog({ onPageChange }) {
       if (tableFilter !== "All") params.append("table_name", tableFilter);
       if (searchQuery) params.append("search", searchQuery);
 
+      console.log("🔄 Fetching audit logs from API:", `/admin/audit-logs?${params}`);
       const response = await fetchWithAuth(`/admin/audit-logs?${params}`);
+      console.log("📥 Raw audit logs response:", response);
       
       // Handle response structure: { success: true, data: { data: [...], ... } } for paginated
       // or { success: true, data: [...] } for array
       let logs = [];
-      if (response && response.data) {
+      if (response && response.success && response.data) {
         // Check if it's a paginated response (has data.data array)
         if (response.data.data && Array.isArray(response.data.data)) {
           logs = response.data.data;
@@ -82,12 +132,16 @@ export function AuditLog({ onPageChange }) {
         else if (Array.isArray(response.data)) {
           logs = response.data;
         }
+      } else if (Array.isArray(response)) {
+        // Direct array response
+        logs = response;
       }
       
+      console.log("✅ Processed audit logs:", logs.length);
       // Ensure auditLogs is always an array
       setAuditLogs(Array.isArray(logs) ? logs : []);
     } catch (error) {
-      console.error("Failed to fetch audit logs:", error);
+      console.error("❌ Failed to fetch audit logs:", error);
       setAuditLogs([]);
     } finally {
       setLoading(false);
@@ -96,10 +150,13 @@ export function AuditLog({ onPageChange }) {
 
   const fetchStatistics = async () => {
     try {
+      console.log("🔄 Fetching audit log statistics...");
       const response = await fetchWithAuth("/admin/audit-logs/statistics");
-      setStats(response);
+      console.log("📥 Statistics response:", response);
+      setStats(response || { total: 0, today: 0, this_week: 0, this_month: 0 });
     } catch (error) {
-      console.error("Failed to fetch statistics:", error);
+      console.error("❌ Failed to fetch statistics:", error);
+      setStats({ total: 0, today: 0, this_week: 0, this_month: 0 });
     }
   };
 
@@ -135,6 +192,84 @@ export function AuditLog({ onPageChange }) {
         return "secondary";
       default:
         return "outline";
+    }
+  };
+
+  const handleCreate = () => {
+    setEditingLog(null);
+    setFormData({
+      user_id: "",
+      action: "create",
+      table_name: "",
+      record_id: "",
+      old_data: null,
+      new_data: null,
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleEdit = async (log) => {
+    try {
+      const fullLog = await getAuditLog(log.id);
+      const logData = fullLog.data || fullLog;
+      setEditingLog(logData);
+      setFormData({
+        user_id: logData.user_id?.toString() || "",
+        action: logData.action || "create",
+        table_name: logData.table_name || "",
+        record_id: logData.record_id?.toString() || "",
+        old_data: logData.old_data || null,
+        new_data: logData.new_data || null,
+      });
+      setIsDialogOpen(true);
+    } catch (error) {
+      console.error("Error loading log for edit:", error);
+      notify.error("Failed to load log for editing");
+    }
+  };
+
+  const handleDelete = async (logId) => {
+    if (!confirm("Are you sure you want to delete this audit log?")) {
+      return;
+    }
+
+    try {
+      await deleteAuditLog(logId);
+      notify.success("Audit log deleted successfully");
+      await fetchAuditLogs();
+      await fetchStatistics();
+    } catch (error) {
+      console.error("Error deleting audit log:", error);
+      notify.error("Failed to delete audit log: " + (error.message || "Unknown error"));
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const submitData = {
+        user_id: parseInt(formData.user_id),
+        action: formData.action,
+        table_name: formData.table_name,
+        record_id: parseInt(formData.record_id) || 0,
+        old_data: formData.old_data ? (typeof formData.old_data === 'string' ? JSON.parse(formData.old_data) : formData.old_data) : null,
+        new_data: formData.new_data ? (typeof formData.new_data === 'string' ? JSON.parse(formData.new_data) : formData.new_data) : null,
+      };
+
+      if (editingLog) {
+        await updateAuditLog(editingLog.id, submitData);
+        notify.success("Audit log updated successfully");
+      } else {
+        await createAuditLog(submitData);
+        notify.success("Audit log created successfully");
+      }
+
+      setIsDialogOpen(false);
+      await fetchAuditLogs();
+      await fetchStatistics();
+    } catch (error) {
+      console.error("Error saving audit log:", error);
+      notify.error("Failed to save audit log: " + (error.message || "Unknown error"));
     }
   };
 
@@ -183,28 +318,32 @@ export function AuditLog({ onPageChange }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      {/* Header - Responsive */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <Button
             variant="outline"
             onClick={() => onPageChange("dashboard")}
-            className="border-border hover:bg-primary/5"
+            className="border-border hover:bg-primary/5 w-full sm:w-auto"
+            size="sm"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+            <span className="hidden sm:inline">Back to Dashboard</span>
+            <span className="sm:hidden">Back</span>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Audit Log</h1>
-            <p className="text-muted-foreground">Monitor system activity and security events</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Audit Log</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">Monitor system activity and security events</p>
           </div>
         </div>
         <Button
           onClick={handleExportLogs}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
+          size="sm"
         >
           <Download className="mr-2 h-4 w-4" />
-          Export Logs
+          <span className="hidden sm:inline">Export Logs</span>
+          <span className="sm:hidden">Export</span>
         </Button>
       </div>
 
@@ -325,9 +464,18 @@ export function AuditLog({ onPageChange }) {
       {/* Audit Logs Table */}
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-foreground">
-            Audit Logs ({filteredLogs.length})
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-foreground">
+              Audit Logs ({filteredLogs.length})
+            </CardTitle>
+            <Button
+              onClick={handleCreate}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Audit Log
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -340,18 +488,19 @@ export function AuditLog({ onPageChange }) {
                   <TableHead>Table</TableHead>
                   <TableHead>Record ID</TableHead>
                   <TableHead>Details</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center">
+                    <TableCell colSpan={7} className="text-center">
                       Loading audit logs...
                     </TableCell>
                   </TableRow>
                 ) : filteredLogs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center">
+                    <TableCell colSpan={7} className="text-center">
                       No audit logs found
                     </TableCell>
                   </TableRow>
@@ -402,6 +551,28 @@ export function AuditLog({ onPageChange }) {
                           "No details"
                         )}
                       </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(log)}
+                            className="h-8 w-8 p-0"
+                            title="Edit"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(log.id)}
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -411,6 +582,134 @@ export function AuditLog({ onPageChange }) {
         </CardContent>
       </Card>
 
+      {/* Create/Edit Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingLog ? "Edit Audit Log" : "Create Audit Log"}</DialogTitle>
+            <DialogDescription>
+              {editingLog ? "Update audit log details" : "Create a new audit log entry"}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="user_id">User *</Label>
+              <Select
+                value={formData.user_id}
+                onValueChange={(value) => setFormData({ ...formData, user_id: value })}
+                required
+              >
+                <SelectTrigger className="bg-input-background border-border">
+                  <SelectValue placeholder="Select user" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.id.toString()}>
+                      {user.name} ({user.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="action">Action *</Label>
+              <Select
+                value={formData.action}
+                onValueChange={(value) => setFormData({ ...formData, action: value })}
+                required
+              >
+                <SelectTrigger className="bg-input-background border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["create", "update", "delete", "login", "logout"].map((action) => (
+                    <SelectItem key={action} value={action}>
+                      {action}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="table_name">Table Name *</Label>
+              <Input
+                id="table_name"
+                value={formData.table_name}
+                onChange={(e) => setFormData({ ...formData, table_name: e.target.value })}
+                placeholder="e.g., users, appointments, clients"
+                className="bg-input-background border-border"
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="record_id">Record ID *</Label>
+              <Input
+                id="record_id"
+                type="number"
+                value={formData.record_id}
+                onChange={(e) => setFormData({ ...formData, record_id: e.target.value })}
+                placeholder="e.g., 1, 2, 3"
+                className="bg-input-background border-border"
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="old_data">Old Data (JSON)</Label>
+              <Textarea
+                id="old_data"
+                value={formData.old_data ? (typeof formData.old_data === 'string' ? formData.old_data : JSON.stringify(formData.old_data, null, 2)) : ""}
+                onChange={(e) => {
+                  try {
+                    const parsed = e.target.value ? JSON.parse(e.target.value) : null;
+                    setFormData({ ...formData, old_data: parsed });
+                  } catch {
+                    setFormData({ ...formData, old_data: e.target.value });
+                  }
+                }}
+                placeholder='{"key": "value"}'
+                className="bg-input-background border-border font-mono text-sm"
+                rows={4}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="new_data">New Data (JSON)</Label>
+              <Textarea
+                id="new_data"
+                value={formData.new_data ? (typeof formData.new_data === 'string' ? formData.new_data : JSON.stringify(formData.new_data, null, 2)) : ""}
+                onChange={(e) => {
+                  try {
+                    const parsed = e.target.value ? JSON.parse(e.target.value) : null;
+                    setFormData({ ...formData, new_data: parsed });
+                  } catch {
+                    setFormData({ ...formData, new_data: e.target.value });
+                  }
+                }}
+                placeholder='{"key": "value"}'
+                className="bg-input-background border-border font-mono text-sm"
+                rows={4}
+              />
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-primary hover:bg-primary/90">
+                {editingLog ? "Update" : "Create"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
