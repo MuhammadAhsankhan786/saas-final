@@ -17,12 +17,12 @@ class ProviderSeeder extends Seeder
         $location = DB::table('locations')->first();
         $locationId = $location ? $location->id : 1;
 
-        $canonical = DB::table('users')->where('email', 'provider@medispa.com')->first();
+        $canonical = DB::table('users')->where('email', 'provider@pulse.com')->first();
         if (!$canonical) {
             DB::table('users')->insert([
                 'name' => 'Test Provider',
-                'email' => 'provider@medispa.com',
-                'password' => Hash::make('demo123'),
+                'email' => 'provider@pulse.com',
+                'password' => Hash::make('provider123'),
                 'role' => 'provider',
                 'location_id' => $locationId,
                 'phone' => '+1234567890',
@@ -31,7 +31,7 @@ class ProviderSeeder extends Seeder
             ]);
         }
 
-        echo "✅ Ensured provider@medispa.com (demo123)\n";
+        echo "✅ Ensured provider@pulse.com (provider123)\n";
     }
 }
 

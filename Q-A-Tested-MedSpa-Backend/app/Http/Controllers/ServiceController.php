@@ -57,6 +57,7 @@ class ServiceController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'category' => 'nullable|string|max:255',
             'price' => 'required|numeric|min:0',
             'duration' => 'required|integer|min:1',
             'package_id' => 'nullable|exists:packages,id',
@@ -91,6 +92,7 @@ class ServiceController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
+            'category' => 'nullable|string|max:255',
             'price' => 'sometimes|numeric|min:0',
             'duration' => 'sometimes|integer|min:1',
             'package_id' => 'nullable|exists:packages,id',

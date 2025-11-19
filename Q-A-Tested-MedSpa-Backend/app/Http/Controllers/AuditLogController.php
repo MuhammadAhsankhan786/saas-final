@@ -152,4 +152,135 @@ class AuditLogController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Store a newly created audit log
+     */
+    public function store(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'user_id' => 'required|exists:users,id',
+                'action' => 'required|string|max:255',
+                'table_name' => 'required|string|max:255',
+                'record_id' => 'required|integer',
+                'old_data' => 'nullable|array',
+                'new_data' => 'nullable|array',
+            ]);
+
+            $auditLog = AuditLog::create($validated);
+            $auditLog->load('user:id,name,email,role');
+
+            \Log::info('Audit log created: ' . $auditLog->id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Audit log created successfully',
+                'data' => $auditLog
+            ], 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Error creating audit log: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create audit log',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Display the specified audit log
+     */
+    public function show($id)
+    {
+        try {
+            $auditLog = AuditLog::with('user:id,name,email,role')->findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => $auditLog
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Audit log not found',
+                'error' => $e->getMessage()
+            ], 404);
+        }
+    }
+
+    /**
+     * Update the specified audit log
+     */
+    public function update(Request $request, $id)
+    {
+        try {
+            $auditLog = AuditLog::findOrFail($id);
+
+            $validated = $request->validate([
+                'user_id' => 'sometimes|exists:users,id',
+                'action' => 'sometimes|string|max:255',
+                'table_name' => 'sometimes|string|max:255',
+                'record_id' => 'sometimes|integer',
+                'old_data' => 'nullable|array',
+                'new_data' => 'nullable|array',
+            ]);
+
+            $auditLog->update($validated);
+            $auditLog->load('user:id,name,email,role');
+
+            \Log::info('Audit log updated: ' . $auditLog->id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Audit log updated successfully',
+                'data' => $auditLog
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Error updating audit log: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update audit log',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove the specified audit log
+     */
+    public function destroy($id)
+    {
+        try {
+            $auditLog = AuditLog::findOrFail($id);
+            $auditLogId = $auditLog->id;
+            $auditLog->delete();
+
+            \Log::info('Audit log deleted: ' . $auditLogId);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Audit log deleted successfully'
+            ], 200);
+        } catch (\Exception $e) {
+            \Log::error('Error deleting audit log: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete audit log',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

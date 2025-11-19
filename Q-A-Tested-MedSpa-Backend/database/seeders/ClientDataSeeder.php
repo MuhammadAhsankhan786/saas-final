@@ -13,14 +13,14 @@ class ClientDataSeeder extends Seeder
         echo "🌱 Seeding client-specific data...\n";
 
         // Find or create a client user
-        $clientUser = DB::table('users')->where('email', 'client@medispa.com')->first();
+        $clientUser = DB::table('users')->where('email', 'client@pulse.com')->first();
         
         if (!$clientUser) {
             echo "⚠️ No client user found. Creating one...\n";
             $clientUserId = DB::table('users')->insertGetId([
                 'name' => 'Test Client',
-                'email' => 'client@medispa.com',
-                'password' => bcrypt('demo123'),
+                'email' => 'client@pulse.com',
+                'password' => bcrypt('client123'),
                 'role' => 'client',
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
@@ -54,7 +54,7 @@ class ClientDataSeeder extends Seeder
             $clientId = DB::table('clients')->insertGetId([
                 'user_id' => $clientUserId,
                 'name' => 'Test Client',
-                'email' => 'client@medispa.com',
+                'email' => 'client@pulse.com',
                 'phone' => '+1234567890',
                 'location_id' => $locationId,
                 'created_at' => Carbon::now(),

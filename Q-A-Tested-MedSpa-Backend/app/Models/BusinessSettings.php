@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class BusinessSettings extends Model
 {
+    protected $table = 'business_settings';
+    
     protected $fillable = [
         'business_name',
         'business_type',

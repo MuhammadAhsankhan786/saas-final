@@ -18,22 +18,22 @@ class AdminDashboardSeeder extends Seeder
         
         // Get or create admin user
         // Ensure canonical admin account
-        $existingAdmin = DB::table('users')->where('email', 'admin@medispa.com')->first();
+        $existingAdmin = DB::table('users')->where('email', 'admin@pulse.com')->first();
         if ($existingAdmin) {
             $adminId = $existingAdmin->id;
         } else {
             $adminId = DB::table('users')->updateOrInsert(
-                ['email' => 'admin@medispa.com'],
+                ['email' => 'admin@pulse.com'],
                 [
                     'name' => 'Admin User',
-                    'password' => bcrypt('demo123'),
+                    'password' => bcrypt('admin123'),
                     'role' => 'admin',
                     'created_at' => Carbon::now(),
                     'updated_at' => Carbon::now(),
                 ]
             );
             // updateOrInsert returns boolean in some DBs; re-read id
-            $adminId = DB::table('users')->where('email', 'admin@medispa.com')->value('id');
+            $adminId = DB::table('users')->where('email', 'admin@pulse.com')->value('id');
         }
 
         // Get or create location
@@ -97,8 +97,8 @@ class AdminDashboardSeeder extends Seeder
         if (!$provider) {
             $providerId = DB::table('users')->insertGetId([
                 'name' => 'Provider User',
-                'email' => 'provider@medispa.com',
-                'password' => bcrypt('demo123'),
+                'email' => 'provider@pulse.com',
+                'password' => bcrypt('provider123'),
                 'role' => 'provider',
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),

@@ -37,7 +37,7 @@ class DatabaseSeederController extends Controller
      * - 1 compliance alert (pending)
      * 
      * Reception Role Requirements:
-     * - reception@medispa.com / demo123
+     * - reception@pulse.com / reception123
      * - 3 appointments for today (linked to provider, clients)
      * - 1-2 payments (linked to appointments)
      * - 2 packages (Basic, Premium)
@@ -174,13 +174,13 @@ class DatabaseSeederController extends Controller
             // ============================================
             // STEP 5: Seed Provider User
             // ============================================
-            $provider = User::where('email', 'provider@medispa.com')->first();
+            $provider = User::where('email', 'provider@pulse.com')->first();
             if (!$provider) {
                 $provider = User::updateOrCreate(
-                    ['email' => 'provider@medispa.com'],
+                    ['email' => 'provider@pulse.com'],
                     [
                         'name' => 'Dr. Provider',
-                        'password' => Hash::make('demo123'),
+                        'password' => Hash::make('provider123'),
                         'role' => 'provider',
                     ]
                 );
@@ -191,13 +191,13 @@ class DatabaseSeederController extends Controller
             // ============================================
             // STEP 6: Seed Reception User
             // ============================================
-            $reception = User::where('email', 'reception@medispa.com')->first();
+            $reception = User::where('email', 'reception@pulse.com')->first();
             if (!$reception) {
                 $reception = User::updateOrCreate(
-                    ['email' => 'reception@medispa.com'],
+                    ['email' => 'reception@pulse.com'],
                     [
                         'name' => 'Reception Staff',
-                        'password' => Hash::make('demo123'),
+                        'password' => Hash::make('reception123'),
                         'role' => 'reception',
                     ]
                 );
@@ -518,8 +518,8 @@ class DatabaseSeederController extends Controller
             
             Log::info('✅ Database seeding completed successfully', [
                 'seeded_tables' => $seeded,
-                'provider_email' => 'provider@medispa.com',
-                'reception_email' => 'reception@medispa.com',
+                'provider_email' => 'provider@pulse.com',
+                'reception_email' => 'reception@pulse.com',
             ]);
             
             return $seeded;

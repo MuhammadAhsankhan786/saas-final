@@ -10,10 +10,13 @@ return new class extends Migration
     {
         Schema::create('stock_notifications', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            $table->unsignedBigInteger('product_id')->nullable();
             $table->integer('current_stock');
             $table->boolean('is_read')->default(false);
             $table->timestamps();
+            
+            // Note: Foreign key constraint removed due to migration compatibility
+            // Can be added later via separate migration if needed
         });
     }
 

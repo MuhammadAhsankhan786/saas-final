@@ -38,48 +38,48 @@ class TreatmentController extends Controller
                 $query->where('provider_id', $user->id);
             }
 
-            $treatments = $query->get();
+            // Optimized: Eager load relationships to avoid N+1 queries
+            $treatments = $query->with(['appointment.client:id,name,email'])
+                ->get();
 
-            // If no data and provider role, seed sample treatments
+            // If no data and provider role, seed sample treatments (only once, not on every request)
             if ($treatments->isEmpty() && $user->role === 'provider') {
-                $seeded = DatabaseSeederController::seedMissingData();
-                if (in_array('treatments', $seeded) || !Treatment::query()->exists()) {
-                    \Illuminate\Support\Facades\Log::info('No treatments found; data seeded automatically...');
-                    $treatments = $query->get();
+                // Check if provider already has treatments to avoid repeated seeding
+                $hasTreatments = Treatment::where('provider_id', $user->id)->exists();
+                if (!$hasTreatments) {
+                    try {
+                        $seeded = DatabaseSeederController::seedMissingData();
+                        if (in_array('treatments', $seeded) || !Treatment::query()->exists()) {
+                            \Illuminate\Support\Facades\Log::info('No treatments found; data seeded automatically...');
+                            // Reload with eager loading
+                            $treatments = $query->with(['appointment.client:id,name,email'])->get();
+                        }
+                    } catch (\Exception $e) {
+                        \Illuminate\Support\Facades\Log::error('Failed to seed treatments', [
+                            'error' => $e->getMessage()
+                        ]);
+                    }
                 }
             }
 
-            // Transform to safe JSON structure
+            // Transform to safe JSON structure (now with eager loaded data)
             $result = $treatments->map(function ($treatment) {
                 try {
                     $appointmentData = null;
-                    if ($treatment->appointment_id) {
-                        try {
-                            $apt = $treatment->appointment ?? \App\Models\Appointment::find($treatment->appointment_id);
-                            if ($apt) {
-                                $clientData = null;
-                                if ($apt->client_id) {
-                                    $client = $apt->client ?? \App\Models\Client::find($apt->client_id);
-                                    if ($client) {
-                                        $clientData = [
-                                            'id' => $client->id ?? null,
-                                            'name' => $client->name ?? '',
-                                            'email' => $client->email ?? '',
-                                        ];
-                                    }
-                                }
-                                $appointmentData = [
-                                    'id' => $apt->id ?? null,
-                                    'client' => $clientData,
-                                    'start_time' => $apt->start_time ?? null,
-                                ];
-                            }
-                        } catch (\Exception $e) {
-                            \Illuminate\Support\Facades\Log::warning('Failed to load appointment for treatment', [
-                                'treatment_id' => $treatment->id,
-                                'error' => $e->getMessage()
-                            ]);
+                    if ($treatment->appointment) {
+                        $clientData = null;
+                        if ($treatment->appointment->client) {
+                            $clientData = [
+                                'id' => $treatment->appointment->client->id ?? null,
+                                'name' => $treatment->appointment->client->name ?? '',
+                                'email' => $treatment->appointment->client->email ?? '',
+                            ];
                         }
+                        $appointmentData = [
+                            'id' => $treatment->appointment->id ?? null,
+                            'client' => $clientData,
+                            'start_time' => $treatment->appointment->start_time ?? null,
+                        ];
                     }
 
                     return [
@@ -170,6 +170,8 @@ class TreatmentController extends Controller
      */
     public function store(Request $request)
     {
+        $user = auth()->user();
+        
         $request->validate([
             'appointment_id' => 'required|exists:appointments,id',
             'provider_id'    => 'required|exists:users,id',
@@ -182,6 +184,18 @@ class TreatmentController extends Controller
             'after_photo'    => 'nullable|file|mimes:jpg,jpeg,png|max:2048',
             'treatment_date' => 'required|date',
         ]);
+
+        // Provider can only create treatments for their own appointments
+        if ($user && $user->role === 'provider') {
+            $appointment = \App\Models\Appointment::findOrFail($request->appointment_id);
+            if ($appointment->provider_id !== $user->id) {
+                return response()->json([
+                    'message' => 'Unauthorized - You can only create treatments for your own appointments'
+                ], 403);
+            }
+            // Force provider_id to be the logged-in provider's ID
+            $request->merge(['provider_id' => $user->id]);
+        }
 
         // File uploads → Secure private storage
         $beforePhoto = $request->hasFile('before_photo')
@@ -300,5 +314,78 @@ class TreatmentController extends Controller
         $treatment->delete();
 
         return response()->json(['message' => 'Treatment deleted successfully'], 200);
+    }
+
+    /**
+     * Upload before/after photos for a treatment
+     */
+    public function uploadPhotos(Request $request, $id)
+    {
+        $treatment = Treatment::findOrFail($id);
+        $user = auth()->user();
+
+        // Provider can only upload photos for their own treatments
+        if ($user->role === 'provider' && $treatment->provider_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'before_photo' => 'nullable|file|mimes:jpg,jpeg,png|max:2048',
+            'after_photo' => 'nullable|file|mimes:jpg,jpeg,png|max:2048',
+        ]);
+
+        if ($request->hasFile('before_photo')) {
+            // Delete old photo if exists
+            if ($treatment->before_photo) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($treatment->before_photo);
+            }
+            $treatment->before_photo = $request->file('before_photo')->store('treatments/before', 'local');
+        }
+
+        if ($request->hasFile('after_photo')) {
+            // Delete old photo if exists
+            if ($treatment->after_photo) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($treatment->after_photo);
+            }
+            $treatment->after_photo = $request->file('after_photo')->store('treatments/after', 'local');
+        }
+
+        $treatment->save();
+
+        return response()->json([
+            'message' => 'Photos uploaded successfully',
+            'treatment' => $treatment->fresh()
+        ], 200);
+    }
+
+    /**
+     * Delete a photo from a treatment (before or after)
+     */
+    public function deletePhoto($id, $type)
+    {
+        $treatment = Treatment::findOrFail($id);
+        $user = auth()->user();
+
+        // Provider can only delete photos from their own treatments
+        if ($user->role === 'provider' && $treatment->provider_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if (!in_array($type, ['before', 'after'])) {
+            return response()->json(['message' => 'Invalid photo type. Use "before" or "after"'], 422);
+        }
+
+        $photoField = $type . '_photo';
+
+        if ($treatment->$photoField) {
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($treatment->$photoField);
+            $treatment->$photoField = null;
+            $treatment->save();
+        }
+
+        return response()->json([
+            'message' => ucfirst($type) . ' photo deleted successfully',
+            'treatment' => $treatment->fresh()
+        ], 200);
     }
 }

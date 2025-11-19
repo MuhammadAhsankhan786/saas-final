@@ -15,10 +15,16 @@ class Location extends Model
         'city',
         'state',
         'zip_code',
+        'zip',
+        'phone',
         'timezone',
+        'status',
         'contact_phone',
         'contact_email',
-        'zip',
+    ];
+
+    protected $attributes = [
+        'status' => 'active',
     ];
 
     // Many-to-many: ek location me multiple staff

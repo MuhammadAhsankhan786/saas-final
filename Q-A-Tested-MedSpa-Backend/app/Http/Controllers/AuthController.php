@@ -50,20 +50,29 @@ class AuthController extends Controller
             $user = auth('api')->user();
 
             if (!$user) {
-                return response()->json(['error' => 'Unauthorized'], 401);
+                \Log::warning('AuthController@me: User not found after authentication');
+                return response()->json(['error' => 'Unauthorized', 'message' => 'Unauthenticated.'], 401);
             }
 
             return response()->json($user);
         } catch (\PHPOpenSourceSaver\JWTAuth\Exceptions\TokenExpiredException $e) {
-            return response()->json(['error' => 'Token expired'], 401);
+            \Log::warning('AuthController@me: Token expired', ['exception' => $e->getMessage()]);
+            return response()->json(['error' => 'Token expired', 'message' => 'Unauthenticated.'], 401);
         } catch (\PHPOpenSourceSaver\JWTAuth\Exceptions\TokenInvalidException $e) {
-            return response()->json(['error' => 'Token invalid'], 401);
+            \Log::warning('AuthController@me: Token invalid', ['exception' => $e->getMessage()]);
+            return response()->json(['error' => 'Token invalid', 'message' => 'Unauthenticated.'], 401);
         } catch (\PHPOpenSourceSaver\JWTAuth\Exceptions\JWTException $e) {
             // Covers cases like token absent/could not be parsed
-            return response()->json(['error' => 'Unauthorized'], 401);
+            \Log::warning('AuthController@me: JWT exception', ['exception' => $e->getMessage()]);
+            return response()->json(['error' => 'Unauthorized', 'message' => 'Unauthenticated.'], 401);
         } catch (\Throwable $e) {
             // Avoid leaking internals; normalize to 401 for auth-related failures
-            return response()->json(['error' => 'Unauthorized'], 401);
+            \Log::error('AuthController@me: Unexpected error', [
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Unauthorized', 'message' => 'Unauthenticated.'], 401);
         }
     }
 
@@ -77,7 +86,26 @@ class AuthController extends Controller
     // 🔹 Refresh token
     public function refresh()
     {
-        return $this->respondWithToken(auth('api')->refresh());
+        try {
+            $token = auth('api')->refresh();
+            return $this->respondWithToken($token);
+        } catch (\PHPOpenSourceSaver\JWTAuth\Exceptions\TokenExpiredException $e) {
+            \Log::warning('AuthController@refresh: Token expired', ['exception' => $e->getMessage()]);
+            return response()->json(['error' => 'Token expired', 'message' => 'Token has expired and cannot be refreshed. Please login again.'], 401);
+        } catch (\PHPOpenSourceSaver\JWTAuth\Exceptions\TokenInvalidException $e) {
+            \Log::warning('AuthController@refresh: Token invalid', ['exception' => $e->getMessage()]);
+            return response()->json(['error' => 'Token invalid', 'message' => 'Invalid token. Please login again.'], 401);
+        } catch (\PHPOpenSourceSaver\JWTAuth\Exceptions\JWTException $e) {
+            \Log::warning('AuthController@refresh: JWT exception', ['exception' => $e->getMessage()]);
+            return response()->json(['error' => 'Token error', 'message' => 'Unable to refresh token. Please login again.'], 401);
+        } catch (\Throwable $e) {
+            \Log::error('AuthController@refresh: Unexpected error', [
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Refresh failed', 'message' => 'Unable to refresh token. Please login again.'], 401);
+        }
     }
 
     // 🔹 Helper for token response

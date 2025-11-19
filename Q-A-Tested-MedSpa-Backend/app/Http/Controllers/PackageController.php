@@ -108,16 +108,48 @@ class PackageController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'price' => 'required|numeric|min:0',
-            'duration' => 'nullable|integer|min:1',
-            'services_included' => 'nullable|array',
-        ]);
+        try {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'description' => 'nullable|string',
+                'price' => 'required|numeric|min:0',
+                'duration' => 'nullable|integer|min:1',
+                'services_included' => 'nullable|array',
+            ]);
 
-        $package = Package::create($request->all());
-        return response()->json($package, 201);
+            // Only use fillable fields to prevent mass assignment issues
+            $packageData = [
+                'name' => $validated['name'],
+                'description' => $validated['description'] ?? null,
+                'price' => $validated['price'],
+                'duration' => $validated['duration'] ?? null,
+                'services_included' => $validated['services_included'] ?? null,
+            ];
+
+            \Log::info('Creating package with data: ' . json_encode($packageData));
+
+            $package = Package::create($packageData);
+
+            // Refresh to ensure all fields are loaded
+            $package->refresh();
+
+            \Log::info('Package created successfully - ID: ' . $package->id . ', Name: ' . $package->name);
+
+            return response()->json($package, 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Log::error('Package validation error: ' . json_encode($e->errors()));
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Package creation error: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'message' => 'Failed to create package',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -125,18 +157,57 @@ class PackageController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $package = Package::findOrFail($id);
+        try {
+            $package = Package::findOrFail($id);
 
-        $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'description' => 'nullable|string',
-            'price' => 'sometimes|numeric|min:0',
-            'duration' => 'nullable|integer|min:1',
-            'services_included' => 'nullable|array',
-        ]);
+            $validated = $request->validate([
+                'name' => 'sometimes|string|max:255',
+                'description' => 'nullable|string',
+                'price' => 'sometimes|numeric|min:0',
+                'duration' => 'nullable|integer|min:1',
+                'services_included' => 'nullable|array',
+            ]);
 
-        $package->update($request->all());
-        return response()->json($package);
+            // Only use fillable fields to prevent mass assignment issues
+            $packageData = [];
+            if (isset($validated['name'])) {
+                $packageData['name'] = $validated['name'];
+            }
+            if (isset($validated['description'])) {
+                $packageData['description'] = $validated['description'];
+            }
+            if (isset($validated['price'])) {
+                $packageData['price'] = $validated['price'];
+            }
+            if (isset($validated['duration'])) {
+                $packageData['duration'] = $validated['duration'];
+            }
+            if (isset($validated['services_included'])) {
+                $packageData['services_included'] = $validated['services_included'];
+            }
+
+            \Log::info('Updating package ' . $id . ' with data: ' . json_encode($packageData));
+
+            $package->update($packageData);
+            $package->refresh();
+
+            \Log::info('Package updated successfully - ID: ' . $package->id);
+
+            return response()->json($package);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Log::error('Package validation error: ' . json_encode($e->errors()));
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Package update error: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'message' => 'Failed to update package',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -154,35 +225,47 @@ class PackageController extends Controller
      */
     public function generatePackagesPDF(Request $request)
     {
-        // Get all packages
-        $packages = Package::all();
-        
-        // Calculate package statistics
-        $totalPackages = $packages->count();
-        $totalValue = $packages->sum('price');
-        $avgPrice = $packages->avg('price');
-        
-        // Get assignment statistics
-        $totalAssignments = ClientPackage::count();
-        $assignedPackages = ClientPackage::with('package')
-            ->get()
-            ->groupBy('package_id')
-            ->map(function($assignments, $packageId) {
-                $package = $assignments->first()->package;
-                return [
-                    'package_id' => $packageId,
-                    'package_name' => $package ? $package->name : 'Unknown Package',
-                    'assignments_count' => $assignments->count(),
-                    'package_price' => $package ? $package->price : 0
-                ];
-            })
-            ->sortByDesc('assignments_count');
+        try {
+            // Get all packages
+            $packages = Package::all();
+            
+            // Calculate package statistics
+            $totalPackages = $packages->count();
+            $totalValue = $packages->sum('price') ?? 0;
+            $avgPrice = $packages->avg('price') ?? 0;
+            
+            // Get assignment statistics
+            $totalAssignments = ClientPackage::count();
+            $assignedPackages = ClientPackage::with('package')
+                ->get()
+                ->groupBy('package_id')
+                ->map(function($assignments, $packageId) {
+                    $package = $assignments->first()->package;
+                    return [
+                        'package_id' => $packageId,
+                        'package_name' => $package ? $package->name : 'Unknown Package',
+                        'assignments_count' => $assignments->count(),
+                        'package_price' => $package ? $package->price : 0
+                    ];
+                })
+                ->sortByDesc('assignments_count');
 
-        $pdf = PDF::loadView('packages.report', compact(
-            'packages', 'totalPackages', 'totalValue', 'avgPrice', 
-            'totalAssignments', 'assignedPackages'
-        ));
-        
-        return $pdf->download('packages-summary.pdf');
+            $pdf = PDF::loadView('packages.report', compact(
+                'packages', 'totalPackages', 'totalValue', 'avgPrice', 
+                'totalAssignments', 'assignedPackages'
+            ));
+            
+            return $pdf->download('packages-summary.pdf');
+        } catch (\Exception $e) {
+            Log::error('Package PDF generation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to generate PDF report',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

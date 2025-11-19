@@ -13,7 +13,12 @@ class ProductController extends Controller
     // List all products with location filtering
     public function index(Request $request)
     {
+        $user = auth()->user();
         $query = Product::with('location');
+
+        // Provider can only VIEW products (read-only) - no filtering needed for viewing
+        // They cannot manage products (add/delete/update stock) - only log usage
+        // Admin/Reception can see all products
 
         // Filter by location if specified
         if ($request->has('location_id')) {
@@ -47,6 +52,15 @@ class ProductController extends Controller
     // Add new product
     public function store(Request $request)
     {
+        $user = auth()->user();
+        
+        // Provider cannot add products - they can only log usage
+        if ($user && $user->role === 'provider') {
+            return response()->json([
+                'message' => 'Unauthorized - Providers can only log inventory usage, not manage products'
+            ], 403);
+        }
+        
         try {
             $data = $request->validate([
                 // Required fields
@@ -107,6 +121,15 @@ class ProductController extends Controller
     // Update product
     public function update(Request $request, Product $product)
     {
+        $user = auth()->user();
+        
+        // Provider cannot update products - they can only log usage
+        if ($user && $user->role === 'provider') {
+            return response()->json([
+                'message' => 'Unauthorized - Providers can only log inventory usage, not manage products'
+            ], 403);
+        }
+        
         $data = $request->validate([
             'name' => 'sometimes|string|max:255',
             'sku' => 'sometimes|string|unique:products,sku,' . $product->id,
@@ -129,6 +152,15 @@ class ProductController extends Controller
     // Delete product
     public function destroy(Product $product)
     {
+        $user = auth()->user();
+        
+        // Provider cannot delete products - they can only log usage
+        if ($user && $user->role === 'provider') {
+            return response()->json([
+                'message' => 'Unauthorized - Providers can only log inventory usage, not manage products'
+            ], 403);
+        }
+        
         $product->delete();
         return response()->json(null, 204);
     }

@@ -33,24 +33,26 @@ class DatabaseSeeder extends Seeder
             ClientDataSeeder::class,
             // TestDataSeeder::class, // Temporarily disabled due to staff_id column issue
             ComplianceAlertsTableSeeder::class,
+            StaffPerformanceSeeder::class, // Seed staff performance data
+            ServiceSeeder::class, // Seed services data
         ]);
 
-        // Ensure the 4 demo users exist with password demo123
+        // Ensure the 4 demo users exist with unique passwords
         User::updateOrCreate(
-            ['email' => 'admin@medispa.com'],
-            ['name' => 'Admin User', 'password' => bcrypt('demo123'), 'role' => 'admin']
+            ['email' => 'admin@pulse.com'],
+            ['name' => 'Admin User', 'password' => bcrypt('admin123'), 'role' => 'admin']
         );
         User::updateOrCreate(
-            ['email' => 'provider@medispa.com'],
-            ['name' => 'Provider User', 'password' => bcrypt('demo123'), 'role' => 'provider']
+            ['email' => 'provider@pulse.com'],
+            ['name' => 'Provider User', 'password' => bcrypt('provider123'), 'role' => 'provider']
         );
         User::updateOrCreate(
-            ['email' => 'reception@medispa.com'],
-            ['name' => 'Reception User', 'password' => bcrypt('demo123'), 'role' => 'reception']
+            ['email' => 'reception@pulse.com'],
+            ['name' => 'Reception User', 'password' => bcrypt('reception123'), 'role' => 'reception']
         );
         User::updateOrCreate(
-            ['email' => 'client@medispa.com'],
-            ['name' => 'Client User', 'password' => bcrypt('demo123'), 'role' => 'client']
+            ['email' => 'client@pulse.com'],
+            ['name' => 'Client User', 'password' => bcrypt('client123'), 'role' => 'client']
         );
     }
 }

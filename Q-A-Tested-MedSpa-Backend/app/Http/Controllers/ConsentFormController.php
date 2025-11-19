@@ -6,6 +6,7 @@ use App\Models\ConsentForm;
 use Illuminate\Http\Request;
 use App\Http\Controllers\DatabaseSeederController;
 use Illuminate\Support\Facades\Log;
+use Barryvdh\DomPDF\Facade\Pdf as PDF;
 
 class ConsentFormController extends Controller
 {
@@ -31,20 +32,39 @@ class ConsentFormController extends Controller
                     return response()->json([]);
                 }
             } elseif ($user->role === 'provider') {
-                // Provider only sees consent forms for their assigned clients
+                // Provider only sees consent forms for clients who have appointments with them
+                // Optimized: Use subquery instead of pluck + whereIn for better performance
                 $query->whereHas('client', function ($q) use ($user) {
-                    $q->where('preferred_provider_id', $user->id);
+                    $q->whereHas('appointments', function ($q2) use ($user) {
+                        $q2->where('provider_id', $user->id);
+                    });
                 });
             }
 
             $consentForms = $query->get();
 
-            // If no data and provider role, seed sample consent forms
+            // If no data and provider role, seed sample consent forms (only once, not on every request)
             if ($consentForms->isEmpty() && $user->role === 'provider') {
-                $seeded = DatabaseSeederController::seedMissingData();
-                if (in_array('consent_forms', $seeded) || !ConsentForm::query()->exists()) {
-                    Log::info('No consent forms found; data seeded automatically...');
-                    $consentForms = $query->get();
+                // Check if provider's clients have ANY consent forms to avoid repeated seeding
+                $hasConsentForms = ConsentForm::whereHas('client', function ($q) use ($user) {
+                    $q->whereHas('appointments', function ($q2) use ($user) {
+                        $q2->where('provider_id', $user->id);
+                    });
+                })->exists();
+                
+                if (!$hasConsentForms) {
+                    try {
+                        // Force seed consent forms for provider's clients
+                        $this->seedProviderConsentForms($user);
+                        // Reload consent forms after seeding
+                        $consentForms = $query->get();
+                        Log::info('Consent forms seeded for provider', ['provider_id' => $user->id]);
+                    } catch (\Exception $e) {
+                        Log::error('Failed to seed consent forms', [
+                            'error' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString()
+                        ]);
+                    }
                 }
             }
 
@@ -151,6 +171,23 @@ class ConsentFormController extends Controller
             $request->merge(['client_id' => $client->id]);
         }
         
+        // Provider can only create consent forms for clients who have appointments with them
+        if ($user->role === 'provider') {
+            $hasAppointment = \App\Models\Appointment::where('provider_id', $user->id)
+                ->where('client_id', $request->client_id)
+                ->exists();
+            
+            if (!$hasAppointment) {
+                Log::warning('Provider attempted to create consent form for client without appointment', [
+                    'provider_id' => $user->id,
+                    'client_id' => $request->client_id,
+                ]);
+                return response()->json([
+                    'message' => 'Unauthorized - You can only create consent forms for clients who have appointments with you'
+                ], 403);
+            }
+        }
+        
         $request->validate([
             'client_id'        => 'required|exists:clients,id',
             'service_id'       => 'required|exists:services,id',
@@ -193,9 +230,19 @@ class ConsentFormController extends Controller
                 return response()->json(['message' => 'Unauthorized'], 403);
             }
         } elseif ($user->role === 'provider') {
-            // Provider can only see consent forms for their assigned clients
-            if ($consentForm->client->preferred_provider_id !== $user->id) {
-                return response()->json(['message' => 'Unauthorized'], 403);
+            // Provider can only see consent forms for clients who have appointments with them
+            $hasAppointment = \App\Models\Appointment::where('provider_id', $user->id)
+                ->where('client_id', $consentForm->client_id)
+                ->exists();
+            
+            if (!$hasAppointment) {
+                Log::warning('Provider attempted to view consent form for client without appointment', [
+                    'provider_id' => $user->id,
+                    'client_id' => $consentForm->client_id,
+                ]);
+                return response()->json([
+                    'message' => 'Unauthorized - You can only view consent forms for clients who have appointments with you'
+                ], 403);
             }
         }
 
@@ -255,5 +302,139 @@ class ConsentFormController extends Controller
         $consentForm->delete();
 
         return response()->json(['message' => 'Consent form deleted successfully']);
+    }
+
+    /**
+     * Seed consent forms for provider's clients
+     */
+    private function seedProviderConsentForms($provider)
+    {
+        try {
+            // Get provider's clients (those with appointments)
+            $clients = \App\Models\Client::whereHas('appointments', function ($q) use ($provider) {
+                $q->where('provider_id', $provider->id);
+            })->get();
+
+            if ($clients->isEmpty()) {
+                Log::warning('No clients found for provider to seed consent forms', ['provider_id' => $provider->id]);
+                return;
+            }
+
+            // Get available services
+            $services = \App\Models\Service::limit(2)->get();
+            if ($services->isEmpty()) {
+                Log::warning('No services found to seed consent forms');
+                return;
+            }
+
+            $formTypes = ['consent', 'gfe', 'intake'];
+            $consentFormsCreated = [];
+
+            // Create consent forms for each client-service combination
+            foreach ($clients as $index => $client) {
+                $service = $services[$index % $services->count()];
+                $formType = $formTypes[$index % count($formTypes)];
+
+                // Create signed consent form
+                $consent1 = ConsentForm::firstOrCreate(
+                    [
+                        'client_id' => $client->id,
+                        'service_id' => $service->id,
+                        'form_type' => $formType,
+                    ],
+                    [
+                        'digital_signature' => 'signed',
+                        'date_signed' => now()->subDays(rand(1, 30)),
+                    ]
+                );
+                $consentFormsCreated[] = $consent1->id;
+
+                // Create pending consent form (different service if available)
+                if ($services->count() > 1) {
+                    $otherService = $services[($index + 1) % $services->count()];
+                    $consent2 = ConsentForm::firstOrCreate(
+                        [
+                            'client_id' => $client->id,
+                            'service_id' => $otherService->id,
+                            'form_type' => 'consent',
+                        ],
+                        [
+                            'digital_signature' => null,
+                            'date_signed' => null,
+                        ]
+                    );
+                    $consentFormsCreated[] = $consent2->id;
+                }
+            }
+
+            Log::info('Seeded consent forms for provider', [
+                'provider_id' => $provider->id,
+                'consent_form_ids' => $consentFormsCreated,
+                'count' => count($consentFormsCreated)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error seeding provider consent forms', [
+                'provider_id' => $provider->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Download consent form as PDF
+     */
+    public function downloadPDF($id)
+    {
+        try {
+            $user = auth()->user();
+            $consentForm = ConsentForm::with(['client.clientUser', 'service'])->findOrFail($id);
+
+            // RBAC: Provider can only download consent forms for their clients
+            if ($user->role === 'provider') {
+                $hasAppointment = \App\Models\Appointment::where('provider_id', $user->id)
+                    ->where('client_id', $consentForm->client_id)
+                    ->exists();
+                
+                if (!$hasAppointment) {
+                    Log::warning('Provider attempted to download consent form for client without appointment', [
+                        'provider_id' => $user->id,
+                        'client_id' => $consentForm->client_id,
+                    ]);
+                    return response()->json([
+                        'message' => 'Unauthorized - You can only download consent forms for clients who have appointments with you'
+                    ], 403);
+                }
+            }
+
+            // Prepare data for PDF
+            $data = [
+                'consentForm' => $consentForm,
+                'client' => $consentForm->client,
+                'service' => $consentForm->service,
+                'status' => $consentForm->date_signed ? 'signed' : 'pending',
+                'signedDate' => $consentForm->date_signed ? \Carbon\Carbon::parse($consentForm->date_signed)->format('F d, Y') : 'Not signed',
+                'expiryDate' => $consentForm->date_signed ? \Carbon\Carbon::parse($consentForm->date_signed)->addYear()->format('F d, Y') : 'N/A',
+            ];
+
+            $pdf = PDF::loadView('consents.form-pdf', $data);
+            
+            $filename = 'consent-form-' . $consentForm->id . '-' . ($consentForm->client->name ?? 'client') . '.pdf';
+            $filename = preg_replace('/[^a-z0-9\-_\.]/i', '-', $filename); // Sanitize filename
+            
+            return $pdf->download($filename);
+        } catch (\Exception $e) {
+            Log::error('Consent form PDF download failed', [
+                'consent_form_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to generate PDF',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

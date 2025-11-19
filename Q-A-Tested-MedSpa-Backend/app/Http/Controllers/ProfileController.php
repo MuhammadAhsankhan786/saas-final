@@ -59,34 +59,71 @@ class ProfileController extends Controller
      */
     public function updateProfile(Request $request): JsonResponse
     {
-        $user = Auth::user();
-        
-        $validated = $request->validate([
-            'first_name' => 'nullable|string|max:255',
-            'last_name' => 'nullable|string|max:255',
-            'email' => 'nullable|email|max:255|unique:users,email,' . $user->id,
-            'phone' => 'nullable|string|max:20',
-            'title' => 'nullable|string|max:255',
-            'department' => 'nullable|string|max:255',
-            'bio' => 'nullable|string',
-            'address' => 'nullable|string|max:255',
-            'city' => 'nullable|string|max:255',
-            'state' => 'nullable|string|max:255',
-            'zip_code' => 'nullable|string|max:10',
-            'date_of_birth' => 'nullable|date',
-            'emergency_contact' => 'nullable|string|max:255',
-            'emergency_phone' => 'nullable|string|max:20',
-            'notification_preferences' => 'nullable|array',
-            'privacy_settings' => 'nullable|array',
-        ]);
+        try {
+            $user = Auth::user();
+            
+            $validated = $request->validate([
+                'first_name' => 'nullable|string|max:255',
+                'last_name' => 'nullable|string|max:255',
+                'email' => 'nullable|email|max:255|unique:users,email,' . $user->id,
+                'phone' => 'nullable|string|max:20',
+                'title' => 'nullable|string|max:255',
+                'department' => 'nullable|string|max:255',
+                'bio' => 'nullable|string',
+                'address' => 'nullable|string|max:255',
+                'city' => 'nullable|string|max:255',
+                'state' => 'nullable|string|max:255',
+                'zip_code' => 'nullable|string|max:10',
+                'date_of_birth' => 'nullable|date',
+                'emergency_contact' => 'nullable|string|max:255',
+                'emergency_phone' => 'nullable|string|max:20',
+                'notification_preferences' => 'nullable|array',
+                'privacy_settings' => 'nullable|array',
+            ]);
 
-        // Update user profile
-        $user->update($validated);
+            // Filter out null/empty values and only update provided fields
+            // But keep JSON fields even if empty arrays
+            // Also exclude read-only fields that shouldn't be updated
+            $readOnlyFields = ['id', 'name', 'role', 'location_id', 'profile_image'];
+            $updateData = [];
+            foreach ($validated as $key => $value) {
+                // Skip read-only fields
+                if (in_array($key, $readOnlyFields)) {
+                    continue;
+                }
+                
+                if ($key === 'notification_preferences' || $key === 'privacy_settings') {
+                    // Always include JSON fields (model will handle casting)
+                    if ($value !== null) {
+                        $updateData[$key] = $value;
+                    }
+                } else {
+                    // For other fields, skip null/empty
+                    if ($value !== null && $value !== '') {
+                        $updateData[$key] = $value;
+                    }
+                }
+            }
 
-        return response()->json([
-            'message' => 'Profile updated successfully',
-            'data' => $this->getProfile()->getData()
-        ]);
+            // Update user profile (model casts will handle JSON encoding)
+            $user->update($updateData);
+
+            return response()->json([
+                'message' => 'Profile updated successfully',
+                'data' => $this->getProfile()->getData()
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Profile update error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id(),
+                'request_data' => $request->all()
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to update profile',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

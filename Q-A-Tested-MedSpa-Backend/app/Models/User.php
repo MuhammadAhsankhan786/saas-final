@@ -5,11 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Auth\Passwords\CanResetPassword;
+use Illuminate\Contracts\Auth\CanResetPassword as CanResetPasswordContract;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 
-class User extends Authenticatable implements JWTSubject
+class User extends Authenticatable implements JWTSubject, CanResetPasswordContract
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, CanResetPassword;
 
     protected $fillable = [
         'name',
@@ -96,5 +98,17 @@ class User extends Authenticatable implements JWTSubject
     public function roles()
     {
         return $this->belongsToMany(\App\Models\Role::class, 'role_user');
+    }
+
+    /**
+     * Send the password reset notification.
+     * Override to use custom frontend URL
+     */
+    public function sendPasswordResetNotification($token)
+    {
+        $frontendUrl = config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000'));
+        $resetUrl = "{$frontendUrl}/reset-password?token={$token}&email=" . urlencode($this->email);
+
+        $this->notify(new \App\Notifications\ResetPasswordNotification($token));
     }
 }

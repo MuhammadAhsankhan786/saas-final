@@ -8,6 +8,8 @@ use App\Models\Location;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Http\Controllers\DatabaseSeederController;
 
 class ClientController extends Controller
@@ -27,13 +29,14 @@ class ClientController extends Controller
             // Start with basic query - don't eager load relationships initially to avoid errors
             $query = Client::query();
 
-            // Provider sees clients assigned to them OR clients that have appointments with them
+            // Provider sees ONLY clients who have appointments with them
+            // NOT by preferred_provider_id, but by actual appointments relationship
+            // Client A ne iss provider ke saath appointment li → visible
+            // Client B ne dusre provider ke saath appointment liya → NOT visible
             if ($user->role === 'provider') {
-                $query->where(function($q) use ($user) {
-                    $q->where('preferred_provider_id', $user->id)
-                      ->orWhereHas('appointments', function($aptQuery) use ($user) {
-                          $aptQuery->where('provider_id', $user->id);
-                      });
+                // Optimized: Use subquery instead of pluck + whereIn for better performance
+                $query->whereHas('appointments', function ($q) use ($user) {
+                    $q->where('provider_id', $user->id);
                 });
             }
 
@@ -52,7 +55,17 @@ class ClientController extends Controller
             }
 
             // Get clients and safely load relationships
-            $clients = $query->get();
+            try {
+                $clients = $query->get();
+            } catch (\Exception $e) {
+                Log::error('Error executing client query: ' . $e->getMessage(), [
+                    'trace' => $e->getTraceAsString(),
+                    'user_id' => $user->id,
+                    'user_role' => $user->role,
+                ]);
+                // Return empty array on error
+                return response()->json([]);
+            }
             
             // If no data, check and seed all missing tables, then reload
             if ($clients->isEmpty()) {
@@ -199,8 +212,27 @@ class ClientController extends Controller
      */
     public function show($id)
     {
+        $user = auth()->user();
         $client = Client::with(['clientUser', 'location', 'appointments.provider'])
                         ->findOrFail($id);
+        
+        // Provider can only view clients who have appointments with them
+        if ($user && $user->role === 'provider') {
+            $hasAppointment = \App\Models\Appointment::where('provider_id', $user->id)
+                ->where('client_id', $client->id)
+                ->exists();
+            
+            if (!$hasAppointment) {
+                Log::warning('Provider attempted to view client without appointment', [
+                    'provider_id' => $user->id,
+                    'client_id' => $client->id,
+                ]);
+                return response()->json([
+                    'message' => 'Unauthorized - You can only view clients who have appointments with you'
+                ], 403);
+            }
+        }
+        
         return response()->json($client);
     }
 

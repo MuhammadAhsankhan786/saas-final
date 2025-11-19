@@ -28,40 +28,70 @@ class BusinessSettingsController extends Controller
      */
     public function update(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'business_name' => 'required|string|max:255',
-            'business_type' => 'required|string|max:255',
-            'license_number' => 'nullable|string|max:255',
-            'tax_id' => 'nullable|string|max:255',
-            'website' => 'nullable|url|max:255',
-            'description' => 'nullable|string',
-            'address' => 'required|string|max:255',
-            'city' => 'required|string|max:255',
-            'state' => 'required|string|max:255',
-            'zip_code' => 'required|string|max:10',
-            'phone' => 'required|string|max:20',
-            'email' => 'required|email|max:255',
-            'hours' => 'required|array',
-            'currency' => 'required|string|max:3',
-            'timezone' => 'required|string|max:50',
-            'date_format' => 'required|string|max:20',
-            'time_format' => 'required|string|max:2',
-            'features' => 'required|array',
-            'locations' => 'required|array',
-        ]);
+        try {
+            $validated = $request->validate([
+                'business_name' => 'required|string|max:255',
+                'business_type' => 'required|string|max:255',
+                'license_number' => 'nullable|string|max:255',
+                'tax_id' => 'nullable|string|max:255',
+                'website' => 'nullable|url|max:255',
+                'description' => 'nullable|string',
+                'address' => 'required|string|max:255',
+                'city' => 'required|string|max:255',
+                'state' => 'required|string|max:255',
+                'zip_code' => 'required|string|max:10',
+                'phone' => 'required|string|max:20',
+                'email' => 'required|email|max:255',
+                'hours' => 'required|array',
+                'currency' => 'required|string|max:3',
+                'timezone' => 'required|string|max:50',
+                'date_format' => 'required|string|max:20',
+                'time_format' => 'required|string|max:2',
+                'features' => 'required|array',
+                'locations' => 'required|array',
+            ]);
 
-        $settings = BusinessSettings::first();
-        
-        if ($settings) {
-            $settings->update($validated);
-        } else {
-            $settings = BusinessSettings::create($validated);
+            // Ensure JSON fields are arrays (Laravel will auto-encode to JSON)
+            $data = $validated;
+            // Laravel's array cast will handle encoding, but ensure we have arrays
+            if (isset($data['hours']) && !is_array($data['hours'])) {
+                $data['hours'] = json_decode($data['hours'], true) ?? [];
+            }
+            if (isset($data['features']) && !is_array($data['features'])) {
+                $data['features'] = json_decode($data['features'], true) ?? [];
+            }
+            if (isset($data['locations']) && !is_array($data['locations'])) {
+                $data['locations'] = json_decode($data['locations'], true) ?? [];
+            }
+
+            $settings = BusinessSettings::first();
+            
+            if ($settings) {
+                // Update existing settings - Laravel will automatically handle JSON casting
+                $settings->fill($data);
+                $settings->save();
+            } else {
+                // Create new settings
+                $settings = BusinessSettings::create($data);
+            }
+
+            return response()->json([
+                'message' => 'Business settings updated successfully',
+                'data' => $settings
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Business settings update error: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'message' => 'Failed to update business settings',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        return response()->json([
-            'message' => 'Business settings updated successfully',
-            'data' => $settings
-        ]);
     }
 
     /**

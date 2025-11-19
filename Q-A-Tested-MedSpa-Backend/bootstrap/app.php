@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.readonly' => \App\Http\Middleware\AdminReadOnlyMiddleware::class,
             'staff.only' => \App\Http\Middleware\StaffOnlyMiddleware::class,
             'reception.only' => \App\Http\Middleware\ReceptionOnlyMiddleware::class,
+            'provider.only' => \App\Http\Middleware\ProviderOnlyMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

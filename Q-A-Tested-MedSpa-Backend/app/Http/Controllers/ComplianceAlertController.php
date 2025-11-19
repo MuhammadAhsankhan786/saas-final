@@ -138,10 +138,23 @@ class ComplianceAlertController extends Controller
      */
     public function resolve($id)
     {
-        $alert = ComplianceAlert::findOrFail($id);
-        $alert->update(['status' => 'resolved']);
-        
-        return response()->json(['message' => 'Alert resolved successfully']);
+        try {
+            $alert = ComplianceAlert::findOrFail($id);
+            $alert->update(['status' => 'resolved']);
+            
+            \Log::info('Compliance alert resolved: ' . $id);
+            
+            return response()->json([
+                'message' => 'Alert resolved successfully',
+                'alert' => $alert
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error resolving compliance alert: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to resolve alert',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -149,10 +162,23 @@ class ComplianceAlertController extends Controller
      */
     public function dismiss($id)
     {
-        $alert = ComplianceAlert::findOrFail($id);
-        $alert->update(['status' => 'dismissed']);
-        
-        return response()->json(['message' => 'Alert dismissed successfully']);
+        try {
+            $alert = ComplianceAlert::findOrFail($id);
+            $alert->update(['status' => 'dismissed']);
+            
+            \Log::info('Compliance alert dismissed: ' . $id);
+            
+            return response()->json([
+                'message' => 'Alert dismissed successfully',
+                'alert' => $alert
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error dismissing compliance alert: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to dismiss alert',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -161,14 +187,21 @@ class ComplianceAlertController extends Controller
     public function exportPDF(Request $request)
     {
         try {
+            $user = auth()->user();
+            
             $query = ComplianceAlert::query();
 
-            // Apply filters if provided
-            if ($request->has('status') && $request->status !== 'All') {
+            // Role-based filtering: Providers only see alerts assigned to them
+            if ($user && $user->role === 'provider') {
+                $query->where('assigned_to', $user->id);
+            }
+
+            // Apply filters if provided and not undefined/null/empty
+            if ($request->has('status') && $request->status !== 'All' && $request->status !== 'undefined' && $request->status !== null) {
                 $query->where('status', $request->status);
             }
 
-            if ($request->has('priority') && $request->priority !== 'All') {
+            if ($request->has('priority') && $request->priority !== 'All' && $request->priority !== 'undefined' && $request->priority !== null) {
                 $query->where('priority', $request->priority);
             }
 
@@ -190,6 +223,10 @@ class ComplianceAlertController extends Controller
             return $pdf->download('compliance-alerts-' . Carbon::now()->format('Y-m-d') . '.pdf');
             
         } catch (\Exception $e) {
+            \Log::error('Compliance alerts PDF export error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'error' => $e->getMessage(),

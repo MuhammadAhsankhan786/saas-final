@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('stock_alerts', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            $table->unsignedBigInteger('product_id')->nullable();
             $table->string('product_name');
             $table->string('sku');
             $table->string('category')->nullable();
@@ -32,6 +32,9 @@ return new class extends Migration
             $table->string('status')->default('active'); // 'active', 'dismissed', 'resolved'
             $table->text('notes')->nullable();
             $table->timestamps();
+            
+            // Note: Foreign key constraint removed due to migration issues
+            // Can be added later via separate migration if needed
         });
     }
 

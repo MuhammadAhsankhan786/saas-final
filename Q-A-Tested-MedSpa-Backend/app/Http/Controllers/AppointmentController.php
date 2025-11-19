@@ -9,6 +9,7 @@ use App\Models\Location;
 use App\Models\Service;
 use App\Http\Controllers\DatabaseSeederController;
 use App\Notifications\AppointmentCreated;
+use App\Services\TwilioService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,57 @@ use Illuminate\Support\Facades\Schema;
 
 class AppointmentController extends Controller
 {
+    protected $twilioService;
+
+    public function __construct(TwilioService $twilioService)
+    {
+        $this->twilioService = $twilioService;
+    }
+
+    /**
+     * Get or create client profile for authenticated user
+     * 
+     * @param User $user
+     * @return Client
+     */
+    private function getOrCreateClientProfile(User $user): Client
+    {
+        $client = Client::where('user_id', $user->id)->first();
+        
+        if (!$client) {
+            // Get a default location (first available or create a default one)
+            $location = Location::first();
+            
+            if (!$location) {
+                // If no location exists, create a default one
+                $location = Location::create([
+                    'name' => 'Main Location',
+                    'address' => '123 Main St',
+                    'city' => 'City',
+                    'state' => 'ST',
+                    'zip' => '12345',
+                    'timezone' => 'UTC',
+                ]);
+            }
+            
+            // Create client profile using user's information
+            $client = Client::create([
+                'user_id' => $user->id,
+                'name' => $user->name ?? 'Client',
+                'email' => $user->email,
+                'phone' => $user->phone ?? null,
+                'location_id' => $location->id,
+            ]);
+            
+            Log::info('Auto-created client profile for user', [
+                'user_id' => $user->id,
+                'client_id' => $client->id,
+            ]);
+        }
+        
+        return $client;
+    }
+
     /**
      * Get form data for booking appointments (providers, services, locations, packages)
      */
@@ -63,8 +115,8 @@ class AppointmentController extends Controller
                 'user_email' => $user->email,
             ]);
             
-            // Use optional eager loading to prevent crashes if relationships don't exist
-            $query = Appointment::query();
+            // Use eager loading to prevent N+1 queries and improve performance
+            $query = Appointment::with(['client', 'provider', 'location', 'service', 'package']);
 
             // Apply role-based filtering
             if ($user->role === 'client') {
@@ -77,7 +129,12 @@ class AppointmentController extends Controller
             } elseif ($user->role === 'provider') {
                 // Provider only sees their own appointments
                 $query->where('provider_id', $user->id);
-                Log::info('Applied provider filter', ['provider_id' => $user->id]);
+                Log::info('Applied provider filter', [
+                    'provider_id' => $user->id,
+                    'provider_email' => $user->email,
+                    'total_appointments_before_filter' => Appointment::count(),
+                    'provider_appointments_count' => Appointment::where('provider_id', $user->id)->count()
+                ]);
             }
 
             // Apply filters
@@ -181,49 +238,111 @@ class AppointmentController extends Controller
             }
 
             // If no data, check and seed all missing tables, then reload
+            // OPTIMIZED: Only seed if provider has NO appointments at all (not on every empty request)
             if ($appointments->isEmpty()) {
-                try {
-                    // First, ensure base data exists (location, services, clients)
-                    $seeded = DatabaseSeederController::seedMissingData();
-                    Log::info('Auto-seeding base data completed', ['seeded' => $seeded]);
-                } catch (\Exception $e) {
-                    Log::error('Failed to seed base data', [
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
+                // For provider: Check if they have ANY appointments before seeding
+                if ($user->role === 'provider') {
+                    $hasAnyAppointments = Appointment::where('provider_id', $user->id)->exists();
+                    
+                    if (!$hasAnyAppointments) {
+                        // Provider has no appointments at all - try to assign or seed
+                        try {
+                            // First, try to assign existing appointments
+                            $totalAppointments = Appointment::whereNull('provider_id')->count();
+                            if ($totalAppointments > 0) {
+                                $assigned = Appointment::whereNull('provider_id')
+                                    ->limit(5)
+                                    ->update(['provider_id' => $user->id]);
+                                Log::info('Assigned existing appointments to provider', [
+                                    'provider_id' => $user->id,
+                                    'assigned_count' => $assigned,
+                                ]);
+                                // Reload query after assignment
+                                $appointments = $query->orderBy('start_time', 'desc')->get();
+                            }
+                            
+                            // If still empty, seed new appointments (only once)
+                            if ($appointments->isEmpty()) {
+                                Log::info('No appointments found for provider; seeding provider-specific appointments (auto)...', [
+                                    'provider_id' => $user->id,
+                                    'provider_email' => $user->email,
+                                ]);
+                                $this->seedSampleAppointmentsIfEmpty();
+                            }
+                        } catch (\Exception $e) {
+                            Log::error('Failed to seed provider appointments', [
+                                'provider_id' => $user->id,
+                                'error' => $e->getMessage(),
+                                'trace' => $e->getTraceAsString(),
+                            ]);
+                        }
+                    }
+                } else {
+                    // For non-provider roles, only seed if table is completely empty
+                    $hasAnyAppointments = Appointment::query()->exists();
+                    if (!$hasAnyAppointments) {
+                        try {
+                            $seeded = DatabaseSeederController::seedMissingData();
+                            Log::info('Auto-seeding base data completed', ['seeded' => $seeded]);
+                        } catch (\Exception $e) {
+                            Log::error('Failed to seed base data', [
+                                'error' => $e->getMessage(),
+                                'trace' => $e->getTraceAsString(),
+                            ]);
+                        }
+                    }
                 }
                 
+                // Reload appointments for this provider - rebuild query to ensure fresh results
                 try {
-                    // Then, seed provider-specific appointments
-                    Log::info('No appointments found for provider; seeding provider-specific appointments (auto)...', [
-                        'provider_id' => $user->id,
-                        'provider_email' => $user->email,
-                    ]);
-                    $this->seedSampleAppointmentsIfEmpty();
-                } catch (\Exception $e) {
-                    Log::error('Failed to seed provider appointments', [
-                        'provider_id' => $user->id,
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
-                }
-                
-                // Reload appointments for this provider
-                try {
-                    $appointments = $query->orderBy('start_time', 'desc')->get();
+                    // Rebuild query from scratch to ensure we get newly seeded appointments
+                    $reloadQuery = Appointment::query();
+                    
+                    // Re-apply provider filter
+                    if ($user->role === 'provider') {
+                        $reloadQuery->where('provider_id', $user->id);
+                    }
+                    
+                    // Re-apply other filters if they exist
+                    if ($request->has('client_id')) {
+                        $reloadQuery->where('client_id', $request->client_id);
+                    }
+                    if ($request->has('provider_id')) {
+                        $reloadQuery->where('provider_id', $request->provider_id);
+                    }
+                    if ($request->has('location_id')) {
+                        $reloadQuery->where('location_id', $request->location_id);
+                    }
+                    if ($request->has('status')) {
+                        $reloadQuery->where('status', $request->status);
+                    }
+                    
+                    $appointments = $reloadQuery->orderBy('start_time', 'desc')->get();
                     
                     Log::info('Provider appointments after seeding', [
                         'provider_id' => $user->id,
+                        'provider_email' => $user->email,
                         'count' => $appointments->count(),
+                        'appointment_ids' => $appointments->pluck('id')->toArray(),
                     ]);
                 } catch (\Exception $e) {
                     Log::error('Failed to reload appointments after seeding', [
                         'provider_id' => $user->id,
                         'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
                     ]);
                     $appointments = collect([]); // Return empty collection if reload fails
                 }
             }
+            
+            Log::info('Appointments query result before mapping', [
+                'user_role' => $user->role,
+                'user_id' => $user->id,
+                'appointments_count' => $appointments->count(),
+                'first_appointment_id' => $appointments->first()?->id,
+                'first_appointment_provider_id' => $appointments->first()?->provider_id
+            ]);
+            
             $result = $appointments->map(function ($apt) {
                 try {
                     // Safely load relationships with try-catch
@@ -355,6 +474,13 @@ class AppointmentController extends Controller
                     ];
                 }
             })->filter(); // Remove any null entries
+
+            Log::info('Appointments after mapping and filtering', [
+                'user_role' => $user->role,
+                'user_id' => $user->id,
+                'result_count' => $result->count(),
+                'first_result_id' => $result->first()['id'] ?? null
+            ]);
 
             return response()->json($result->values());
         } catch (\Exception $e) {
@@ -529,39 +655,50 @@ class AppointmentController extends Controller
                 ]);
             }
             
-            // Create 3 appointments for today with all required fields
-            $today = now()->startOfDay();
+            // Create 5 appointments - mix of today and upcoming days to ensure visibility
+            $now = now();
             $createdAppointments = [];
-            $hours = [9, 11, 14];
+            $appointmentTimes = [
+                $now->copy()->addHours(2), // 2 hours from now
+                $now->copy()->addHours(4), // 4 hours from now
+                $now->copy()->addDay()->setTime(9, 0), // Tomorrow 9 AM
+                $now->copy()->addDay()->setTime(14, 0), // Tomorrow 2 PM
+                $now->copy()->addDays(2)->setTime(10, 0), // Day after tomorrow 10 AM
+            ];
             
-            foreach ($hours as $index => $hour) {
+            foreach ($appointmentTimes as $index => $startTime) {
                 $apptClient = ($index % 2 == 0) ? $client : $client2;
-                $apptService = ($index == 0) ? $service : $service2;
-                $start = $today->copy()->addHours($hour);
-                $end = $start->copy()->addMinutes($apptService->duration ?? 60);
+                $apptService = ($index % 2 == 0) ? $service : $service2;
+                $endTime = $startTime->copy()->addMinutes($apptService->duration ?? 60);
                 
                 try {
                     $appointment = Appointment::firstOrCreate(
                         [
                             'provider_id' => $targetProvider->id,
                             'client_id' => $apptClient->id,
-                            'start_time' => $start,
+                            'start_time' => $startTime,
                         ],
                         [
                             'location_id' => $location->id,
                             'service_id' => $apptService->id,
                             'package_id' => null,
-                            'end_time' => $end,
-                            'status' => 'confirmed',
+                            'end_time' => $endTime,
+                            'status' => 'booked', // Use 'booked' instead of 'confirmed' to match enum
                             'notes' => 'Auto-seeded for provider testing'
                         ]
                     );
                     $createdAppointments[] = $appointment->id;
+                    Log::info('Created appointment for provider', [
+                        'appointment_id' => $appointment->id,
+                        'provider_id' => $targetProvider->id,
+                        'start_time' => $startTime->toDateTimeString(),
+                    ]);
                 } catch (\Exception $e) {
                     Log::error('Failed to create sample appointment', [
-                        'hour' => $hour,
+                        'start_time' => $startTime->toDateTimeString(),
                         'provider_id' => $targetProvider->id,
                         'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
                     ]);
                 }
             }
@@ -590,9 +727,9 @@ class AppointmentController extends Controller
     {
         $user = Auth::user();
         
-        // Only reception can create appointments
-        if (!$user || $user->role !== 'reception') {
-            return response()->json(['message' => 'Unauthorized - Only reception staff can create appointments'], 401);
+        // Admin and reception can create appointments
+        if (!$user || !in_array($user->role, ['admin', 'reception'])) {
+            return response()->json(['message' => 'Unauthorized - Only admin and reception staff can create appointments'], 401);
         }
         
         // Log incoming request for debugging
@@ -742,7 +879,7 @@ class AppointmentController extends Controller
         }
 
         // Load relationships for notification
-        $appointment->load(['client', 'provider', 'location', 'service', 'package']);
+        $appointment->load(['client.clientUser', 'provider', 'location', 'service', 'package']);
 
         // Send notification to provider if assigned
         if ($appointment->provider_id && $appointment->provider) {
@@ -751,6 +888,16 @@ class AppointmentController extends Controller
                 Log::info("📨 SMS notification sent to provider: {$appointment->provider->name} for appointment #{$appointment->id}");
             } catch (\Exception $e) {
                 Log::error("Failed to send notification: " . $e->getMessage());
+            }
+        }
+
+        // Send confirmation SMS to client (Reception creates appointment)
+        if ($appointment->client && $user->role === 'reception') {
+            try {
+                $this->twilioService->sendAppointmentConfirmation($appointment, $appointment->client);
+                Log::info("📱 Confirmation SMS sent to client for appointment #{$appointment->id}");
+            } catch (\Exception $e) {
+                Log::error("Failed to send confirmation SMS: " . $e->getMessage());
             }
         }
 
@@ -771,11 +918,8 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
         
-        // Get the client record for this user
-        $client = Client::where('user_id', $user->id)->first();
-        if (!$client) {
-            return response()->json(['message' => 'Client profile not found. Please contact administrator.'], 404);
-        }
+        // Get or create the client record for this user
+        $client = $this->getOrCreateClientProfile($user);
         
         $request->validate([
             'client_id' => 'required|exists:clients,id',
@@ -838,10 +982,7 @@ class AppointmentController extends Controller
         }
         
         // Client can only see their own appointments
-        $client = Client::where('user_id', $user->id)->first();
-        if (!$client) {
-            return response()->json(['message' => 'Client profile not found'], 404);
-        }
+        $client = $this->getOrCreateClientProfile($user);
         
         if ($appointment->client_id !== $client->id) {
             return response()->json(['message' => 'Unauthorized - Cannot access other clients\' appointments'], 403);
@@ -899,8 +1040,8 @@ class AppointmentController extends Controller
             }
         }
         
-        // Reception and Provider can update appointments (for scheduling)
-        if (!in_array($user->role, ['client', 'reception', 'provider'])) {
+        // Admin, Reception and Provider can update appointments (for scheduling)
+        if (!in_array($user->role, ['admin', 'client', 'reception', 'provider'])) {
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
@@ -914,10 +1055,24 @@ class AppointmentController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        // Store old start_time for rescheduled SMS
+        $oldStartTime = $appointment->start_time;
+        $appointment->load(['client.clientUser', 'provider', 'location', 'service', 'package']);
+
         $appointment->update($request->only([
             'start_time', 'end_time', 'service_id', 'provider_id', 
             'package_id', 'status', 'notes'
         ]));
+
+        // Send rescheduled SMS if start_time changed and user is reception
+        if ($request->has('start_time') && $oldStartTime !== $appointment->start_time && $user->role === 'reception') {
+            try {
+                $this->twilioService->sendAppointmentRescheduled($appointment, $appointment->client, $oldStartTime);
+                Log::info("📱 Rescheduled SMS sent to client for appointment #{$appointment->id}");
+            } catch (\Exception $e) {
+                Log::error("Failed to send rescheduled SMS: " . $e->getMessage());
+            }
+        }
 
         return response()->json([
             'message' => 'Appointment updated successfully',
@@ -950,7 +1105,18 @@ class AppointmentController extends Controller
         }
 
         $oldStatus = $appointment->status;
+        $appointment->load(['client.clientUser', 'provider', 'location', 'service', 'package']);
         $appointment->update(['status' => $request->status]);
+
+        // Send cancellation SMS if status changed to cancelled and user is reception
+        if ($request->status === 'cancelled' && $oldStatus !== 'cancelled' && in_array($user->role, ['reception', 'admin'])) {
+            try {
+                $this->twilioService->sendAppointmentCancelled($appointment, $appointment->client);
+                Log::info("📱 Cancellation SMS sent to client for appointment #{$appointment->id}");
+            } catch (\Exception $e) {
+                Log::error("Failed to send cancellation SMS: " . $e->getMessage());
+            }
+        }
 
         // Log audit entry for admin actions
         if ($user->role === 'admin') {
@@ -982,11 +1148,8 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
         
-        $client = Client::where('user_id', $user->id)->first();
-        
-        if (!$client) {
-            return response()->json(['message' => 'Client profile not found'], 404);
-        }
+        // Get or create client profile
+        $client = $this->getOrCreateClientProfile($user);
 
         $query = Appointment::with(['provider', 'location', 'service', 'package'])
             ->where('client_id', $client->id);
@@ -1070,8 +1233,21 @@ class AppointmentController extends Controller
                 'appointment_client_id' => $appointment->client_id,
             ]);
         
+        // Load relationships before deletion for SMS
+        $appointment->load(['client.clientUser', 'provider', 'location', 'service', 'package']);
+
         // Admin can delete any appointment with audit log
         if ($user->role === 'admin') {
+            // Send cancellation SMS before deletion
+            if ($appointment->client) {
+                try {
+                    $this->twilioService->sendAppointmentCancelled($appointment, $appointment->client);
+                    Log::info("📱 Cancellation SMS sent to client before deletion of appointment #{$appointment->id}");
+                } catch (\Exception $e) {
+                    Log::error("Failed to send cancellation SMS: " . $e->getMessage());
+                }
+            }
+
             // Log audit entry before deletion
             \App\Models\AuditLog::create([
                 'user_id' => $user->id,
@@ -1089,6 +1265,16 @@ class AppointmentController extends Controller
         
         // Reception can delete appointments
         if ($user->role === 'reception') {
+            // Send cancellation SMS before deletion
+            if ($appointment->client) {
+                try {
+                    $this->twilioService->sendAppointmentCancelled($appointment, $appointment->client);
+                    Log::info("📱 Cancellation SMS sent to client before deletion of appointment #{$appointment->id}");
+                } catch (\Exception $e) {
+                    Log::error("Failed to send cancellation SMS: " . $e->getMessage());
+                }
+            }
+
             $appointment->delete();
             return response()->json(['message' => 'Appointment deleted successfully']);
         }
