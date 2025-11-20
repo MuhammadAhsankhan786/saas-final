@@ -322,7 +322,7 @@ export function Packages({ onPageChange }) {
       
       console.log(`✅ RBAC: Generating packages PDF for role ${user.role}`);
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}${pdfUrl}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${pdfUrl}`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,

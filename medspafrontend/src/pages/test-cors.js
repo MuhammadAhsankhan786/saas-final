@@ -4,7 +4,7 @@ export default function TestCors() {
   const [result, setResult] = useState("");
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/test", {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/test`, {
       method: "GET",
       credentials: "include", // important for CORS with cookies/tokens
     })

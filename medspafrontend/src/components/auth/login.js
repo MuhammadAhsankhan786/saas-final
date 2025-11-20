@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "../ui/alert";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Loader2, Eye, EyeOff } from "lucide-react";
+import Link from "next/link";
 
 export function Login() {
   const [email, setEmail] = useState("");
@@ -121,13 +122,24 @@ export function Login() {
                 )}
               </Button>
               
-              <div className="text-center mt-4">
-                <a
-                  href="/forgot-password"
-                  className="text-sm text-primary hover:underline"
-                >
-                  Forgot Password?
-                </a>
+              <div className="text-center text-sm mt-4 space-y-2">
+                <div>
+                  <Link
+                    href="/forgot-password"
+                    className="text-primary hover:underline"
+                  >
+                    Forgot Password?
+                  </Link>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Don't have an account? </span>
+                  <Link
+                    href="/register"
+                    className="text-primary hover:underline"
+                  >
+                    Sign Up
+                  </Link>
+                </div>
               </div>
             </form>
           </CardContent>

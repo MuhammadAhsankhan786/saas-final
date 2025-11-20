@@ -65,7 +65,7 @@ export function AuthProvider({ children }) {
     }
     
     function validateToken(token) {
-      fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/me`, {
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -95,7 +95,7 @@ export function AuthProvider({ children }) {
 
   // ✅ Login real Laravel JWT
   const login = async (email, password) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/login`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -125,7 +125,7 @@ export function AuthProvider({ children }) {
       userData = data.user;
     } else {
       // Fetch user data
-      const me = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/me`, {
+      const me = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

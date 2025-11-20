@@ -1,6 +1,6 @@
 import { fetchWithAuth } from "../api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 
 // 🧩 Appointment List (Admin)
 export const getAppointments = (filters = {}) => {

@@ -489,7 +489,7 @@ export function InventoryProducts({ onPageChange }) {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}${endpoint}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,

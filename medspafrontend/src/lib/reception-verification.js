@@ -131,7 +131,7 @@ export async function verifyReceptionSystem() {
         try {
           // Direct fetch to test RBAC blocking (fetchWithAuth would auto-remap)
           const token = localStorage.getItem('token');
-          const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+          const API_BASE = process.env.NEXT_PUBLIC_API_URL;
           
           const response = await fetch(`${API_BASE}/admin/appointments`, {
             headers: {

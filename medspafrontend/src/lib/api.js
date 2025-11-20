@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 
 // RBAC Watchdog - Inline implementation to avoid module issues
 const getStaffEquivalentEndpoint = (url) => {
@@ -2062,6 +2062,42 @@ export async function resetPassword(email, password, passwordConfirmation, token
     return data;
   } catch (error) {
     console.error("Error resetting password:", error);
+    throw error;
+  }
+}
+
+// Client Registration API Function
+export async function registerClient(name, email, phone, password, passwordConfirmation) {
+  try {
+    const response = await fetch(`${API_BASE}/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        email,
+        phone,
+        password,
+        password_confirmation: passwordConfirmation,
+      }),
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      // Handle validation errors
+      if (data.errors) {
+        const errorMessages = Object.values(data.errors).flat();
+        throw new Error(errorMessages.join(", ") || "Registration failed");
+      }
+      throw new Error(data.message || "Registration failed");
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Error registering client:", error);
     throw error;
   }
 }

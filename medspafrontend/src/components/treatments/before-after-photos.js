@@ -89,7 +89,7 @@ export function BeforeAfterPhotos({ onPageChange }) {
       const token = localStorage.getItem('token');
       if (!token) return null;
       
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
       const response = await fetch(`${baseUrl}/files/treatments/${treatmentId}/${type}`, {
         headers: {
           'Authorization': `Bearer ${token}`,

@@ -283,7 +283,7 @@ export function AuditLog({ onPageChange }) {
       if (searchQuery) params.append("search", searchQuery);
 
       const token = localStorage.getItem("token");
-      const url = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/admin/audit-logs/export/pdf?${params}`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/admin/audit-logs/export/pdf?${params}`;
       
       const response = await fetch(url, {
         headers: {

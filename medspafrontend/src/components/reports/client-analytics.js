@@ -127,7 +127,7 @@ export function ClientAnalytics({ onPageChange }) {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/admin/clients/analytics/pdf`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/clients/analytics/pdf`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,

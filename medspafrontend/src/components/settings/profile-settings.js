@@ -45,7 +45,7 @@ const getProfileImageUrl = (imagePath) => {
     return imagePath;
   }
   // Convert relative URL to absolute backend URL
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const apiBase = process.env.NEXT_PUBLIC_API_URL;
   // Remove /api from base URL if present, since storage is served from root
   const baseUrl = apiBase.replace('/api', '');
   // Ensure imagePath starts with / if it doesn't
