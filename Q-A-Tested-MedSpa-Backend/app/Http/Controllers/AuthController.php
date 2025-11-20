@@ -8,27 +8,37 @@ use App\Models\User;
 
 class AuthController extends Controller
 {
-    // 🔹 Register
+    // 🔹 Register - CLIENT ONLY (Security: Force role = client, ignore any role from frontend)
     public function register(Request $request)
     {
         $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:6',
-            'role'     => 'nullable|in:admin,provider,reception,client',
+            'name'                  => 'required|string|max:255',
+            'email'                 => 'required|string|email|max:255|unique:users',
+            'phone'                 => 'required|string|max:20|unique:users',
+            'password'              => 'required|string|min:6|confirmed',
+            'password_confirmation' => 'required|string|min:6',
         ]);
 
+        // SECURITY: Force role = 'client' always, ignore any role sent from frontend
+        // Only Admin panel can create admin/provider/reception accounts
         $user = User::create([
             'name'     => $request->name,
             'email'    => $request->email,
+            'phone'    => $request->phone,
             'password' => Hash::make($request->password),
-            'role'     => $request->role ?? 'client', // default role
+            'role'     => 'client', // FORCED - no exceptions
         ]);
 
         // JWT token generate with api guard
         $token = auth('api')->login($user);
 
-        return $this->respondWithToken($token);
+        // Return success response with token and user data
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Account created successfully',
+            'token'   => $token,
+            'user'    => $user,
+        ], 201);
     }
 
     // 🔹 Login

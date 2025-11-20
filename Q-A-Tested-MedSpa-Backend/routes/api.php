@@ -44,6 +44,11 @@ Route::post('auth/reset-password', [PasswordResetController::class, 'reset']);
 // Webhook routes (must be outside auth middleware)
 Route::post('stripe/webhook', [StripeWebhookController::class, 'handleWebhook']);
 
+// Test endpoint for API connectivity
+Route::get('test', function () {
+    return response()->json(['status' => 'API Connected']);
+});
+
 /*
 |--------------------------------------------------------------------------
 | Protected Routes (JWT Auth Required)
