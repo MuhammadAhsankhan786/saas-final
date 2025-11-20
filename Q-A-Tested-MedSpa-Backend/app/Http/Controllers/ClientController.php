@@ -29,15 +29,34 @@ class ClientController extends Controller
             // Start with basic query - don't eager load relationships initially to avoid errors
             $query = Client::query();
 
-            // Provider sees ONLY clients who have appointments with them
-            // NOT by preferred_provider_id, but by actual appointments relationship
-            // Client A ne iss provider ke saath appointment li → visible
-            // Client B ne dusre provider ke saath appointment liya → NOT visible
+            // Provider filtering: See clients who are either:
+            // 1. Assigned to them (preferred_provider_id) OR
+            // 2. Have appointments with them
+            // Security: Never return all clients if filtering fails - always use safe fallback
             if ($user->role === 'provider') {
-                // Optimized: Use subquery instead of pluck + whereIn for better performance
-                $query->whereHas('appointments', function ($q) use ($user) {
-                    $q->where('provider_id', $user->id);
-                });
+                // Check if preferred_provider_id column exists
+                $hasPreferredProviderColumn = Schema::hasColumn('clients', 'preferred_provider_id');
+                
+                if ($hasPreferredProviderColumn) {
+                    // Filter by preferred_provider_id OR appointments relationship
+                    $query->where(function ($q) use ($user) {
+                        // Clients assigned to this provider
+                        $q->where('preferred_provider_id', $user->id)
+                          // OR clients who have appointments with this provider
+                          ->orWhereHas('appointments', function ($appointmentQuery) use ($user) {
+                              $appointmentQuery->where('provider_id', $user->id);
+                          });
+                    });
+                } else {
+                    // Safe fallback: Only filter by appointments if column doesn't exist
+                    // This prevents security issue of returning all clients
+                    Log::warning('preferred_provider_id column not found, using appointments-only filter for provider', [
+                        'provider_id' => $user->id,
+                    ]);
+                    $query->whereHas('appointments', function ($q) use ($user) {
+                        $q->where('provider_id', $user->id);
+                    });
+                }
             }
 
             // Apply filters
@@ -216,19 +235,35 @@ class ClientController extends Controller
         $client = Client::with(['clientUser', 'location', 'appointments.provider'])
                         ->findOrFail($id);
         
-        // Provider can only view clients who have appointments with them
+        // Provider can only view clients who are either:
+        // 1. Assigned to them (preferred_provider_id) OR
+        // 2. Have appointments with them
         if ($user && $user->role === 'provider') {
-            $hasAppointment = \App\Models\Appointment::where('provider_id', $user->id)
-                ->where('client_id', $client->id)
-                ->exists();
+            $hasAccess = false;
             
-            if (!$hasAppointment) {
-                Log::warning('Provider attempted to view client without appointment', [
+            // Check if preferred_provider_id column exists and client is assigned
+            if (Schema::hasColumn('clients', 'preferred_provider_id')) {
+                if ($client->preferred_provider_id === $user->id) {
+                    $hasAccess = true;
+                }
+            }
+            
+            // Also check if client has appointments with this provider
+            if (!$hasAccess) {
+                $hasAppointment = \App\Models\Appointment::where('provider_id', $user->id)
+                    ->where('client_id', $client->id)
+                    ->exists();
+                $hasAccess = $hasAppointment;
+            }
+            
+            if (!$hasAccess) {
+                Log::warning('Provider attempted to view client without relationship', [
                     'provider_id' => $user->id,
                     'client_id' => $client->id,
+                    'preferred_provider_id' => $client->preferred_provider_id ?? 'N/A',
                 ]);
                 return response()->json([
-                    'message' => 'Unauthorized - You can only view clients who have appointments with you'
+                    'message' => 'Unauthorized - You can only view clients assigned to you or who have appointments with you'
                 ], 403);
             }
         }
