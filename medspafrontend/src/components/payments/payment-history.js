@@ -56,6 +56,9 @@ const paymentMethodOptions = ["All", "stripe", "cash"];
 export function PaymentHistory({ onPageChange }) {
   const { user } = useAuth();
   const isClient = user?.role === "client";
+  const isAdmin = user?.role === "admin";
+  const isProvider = user?.role === "provider";
+  const isReception = user?.role === "reception";
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -626,7 +629,7 @@ export function PaymentHistory({ onPageChange }) {
                           >
                             <Download className="h-4 w-4" />
                           </Button>
-                          {payment.status === "completed" && (
+                          {!isAdmin && !isProvider && !isReception && payment.status === "completed" && (
                             <Button
                               variant="outline"
                               size="sm"

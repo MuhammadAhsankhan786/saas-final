@@ -54,6 +54,9 @@ import {
 const statusOptions = ["All", "signed", "pending", "expired", "draft"];
 
 export function ConsentForms({ onPageChange }) {
+  const role = JSON.parse(localStorage.getItem("user") || "{}").role;
+  const isAdmin = role === "admin";
+  const isClient = role === "client";
   const [consentForms, setConsentForms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -368,27 +371,31 @@ export function ConsentForms({ onPageChange }) {
               <p className="text-sm text-muted-foreground">Manage client consent forms and documentation</p>
             </div>
           </div>
-          <Button 
+        {!isAdmin && !isClient && (
+          <Button
             onClick={() => setIsCreateFormOpen(true)}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground" 
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
             size="sm"
           >
             <Plus className="mr-2 h-4 w-4" />
             New Consent Form
           </Button>
+        )}
         </div>
         
         {/* Mobile: Action buttons below heading */}
-        <div className="sm:hidden">
-          <Button 
-            onClick={() => setIsCreateFormOpen(true)}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground w-full" 
-            size="sm"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New Consent Form
-          </Button>
-        </div>
+        {!isAdmin && !isClient && (
+          <div className="sm:hidden">
+            <Button 
+              onClick={() => setIsCreateFormOpen(true)}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground w-full" 
+              size="sm"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              New Consent Form
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Filters */}

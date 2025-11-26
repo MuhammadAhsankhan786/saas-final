@@ -1,5 +1,13 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 
+// Helper function to conditionally log errors based on environment
+const logError = (...args) => {
+  if (process.env.NODE_ENV !== "production") {
+    console.error(...args);
+  }
+  // In production, silently skip logging but still allow error to be thrown/returned
+};
+
 // RBAC Watchdog - Inline implementation to avoid module issues
 const getStaffEquivalentEndpoint = (url) => {
   const mappings = {
@@ -83,10 +91,52 @@ const isAllowedEndpoint = (url) => {
 export async function fetchWithAuth(url, options = {}) {
   const token = localStorage.getItem("token"); // JWT store kar rahe ho localStorage me
   
-  // 🛡️ RBAC Watchdog: Check for Reception role violations
+  // 🛡️ RBAC Watchdog: Check for Client role violations
   try {
     const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
     
+    // 🛡️ RBAC Enforcement: Client can ONLY cancel appointments and update profile
+    if (currentUser?.role === 'client') {
+      const method = (options.method || 'GET').toUpperCase();
+      const isNonGetRequest = method !== 'GET' && method !== 'HEAD';
+
+      if (isNonGetRequest) {
+        // Special case: DELETE /client/appointments/:id is allowed (cancel appointment)
+        const isCancelAppointment = method === 'DELETE' && url.match(/\/client\/appointments\/\d+$/);
+        
+        // PUT /profile or /profile/* is allowed (update own profile)
+        const isUpdateProfile = method === 'PUT' && url.startsWith('/profile');
+
+        if (!isCancelAppointment && !isUpdateProfile) {
+          console.warn(`🚨 RBAC BLOCK: Client attempted ${method} request to ${url}`);
+          if (typeof window !== 'undefined') {
+            try {
+              import('./toast').then(({ notify }) => {
+                notify.error('You can only cancel appointments and update your profile.');
+              }).catch(() => {});
+            } catch (e) {}
+          }
+          throw new Error(`Client role is restricted. ${method} requests are not allowed for ${url}. Only GET requests are permitted (except for canceling appointments and updating profile).`);
+        }
+      }
+
+      // Block client from accessing admin/staff/provider/reception routes
+      if (url.includes('/admin/') || url.includes('/staff/') || url.includes('/provider/') || url.includes('/reception/')) {
+        console.warn(`🚨 RBAC BLOCK: Client attempted access to ${url}`);
+        if (typeof window !== 'undefined') {
+          try {
+            import('./toast').then(({ notify }) => {
+              notify.error('You do not have access to this section.');
+            }).catch(() => {});
+          } catch (e) {}
+        }
+        throw new Error(`Client role cannot access admin, staff, provider, or reception modules. Access denied for ${url}.`);
+      }
+
+      console.log(`✅ RBAC: Client access verified for ${method} ${url}`);
+    }
+    
+    // 🛡️ RBAC Watchdog: Check for Reception role violations
     if (currentUser?.role === 'reception') {
       // Check if URL contains /admin/ or /staff/ - Reception should use /reception/* only
       if (url.includes('/admin/')) {
@@ -124,6 +174,154 @@ export async function fetchWithAuth(url, options = {}) {
           throw new Error(`Unauthorized endpoint for Reception role: ${url}`);
         }
       }
+
+      // 🛡️ API SAFETY GUARD: Block unauthorized mutations for Reception
+      // Reception CAN: Create/Edit appointments, Add/Edit clients, Create payments, Assign packages, View services, Update profile
+      // Reception CANNOT: Delete appointments, Delete clients, Refund payments, Create/Edit/Delete packages, Create/Edit/Delete services, Create/Edit/Delete inventory
+      const method = (options.method || 'GET').toUpperCase();
+      const isNonGetRequest = method !== 'GET' && method !== 'HEAD';
+
+      if (isNonGetRequest) {
+        // Block DELETE requests for appointments and clients
+        if (method === 'DELETE') {
+          if (url.includes('/reception/appointments/') || url.includes('/reception/clients/')) {
+            console.warn(`🚨 RBAC BLOCK: Reception attempted DELETE request to ${url}`);
+            console.warn(`⚠️ Reception role cannot delete appointments or clients.`);
+            if (typeof window !== 'undefined') {
+              try {
+                import('./toast').then(({ notify }) => {
+                  notify.error('Reception cannot delete appointments or clients.');
+                }).catch(() => {});
+              } catch (e) {}
+            }
+            throw new Error(`Reception role cannot delete appointments or clients. DELETE requests are not allowed for ${url}.`);
+          }
+        }
+
+        // Block refund payments
+        if (url.includes('/reception/payments/') && (url.includes('/refund') || url.includes('refund'))) {
+          console.warn(`🚨 RBAC BLOCK: Reception attempted refund payment: ${url}`);
+          if (typeof window !== 'undefined') {
+            try {
+              import('./toast').then(({ notify }) => {
+                notify.error('Reception cannot refund payments.');
+              }).catch(() => {});
+            } catch (e) {}
+          }
+          throw new Error(`Reception role cannot refund payments. Refund requests are not allowed for ${url}.`);
+        }
+
+        // Block Create/Edit/Delete packages (except assign)
+        if (url.includes('/reception/packages') && !url.includes('/assign')) {
+          if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+            console.warn(`🚨 RBAC BLOCK: Reception attempted ${method} request to packages: ${url}`);
+            console.warn(`⚠️ Reception can only assign packages, not create/edit/delete them.`);
+            if (typeof window !== 'undefined') {
+              try {
+                import('./toast').then(({ notify }) => {
+                  notify.error('Reception can only assign packages, not create/edit/delete them.');
+                }).catch(() => {});
+              } catch (e) {}
+            }
+            throw new Error(`Reception role can only assign packages. ${method} requests are not allowed for ${url}.`);
+          }
+        }
+
+        // Block Create/Edit/Delete services
+        if (url.includes('/reception/services') && (method === 'POST' || method === 'PUT' || method === 'DELETE')) {
+          console.warn(`🚨 RBAC BLOCK: Reception attempted ${method} request to services: ${url}`);
+          console.warn(`⚠️ Reception can only view services, not create/edit/delete them.`);
+          if (typeof window !== 'undefined') {
+            try {
+              import('./toast').then(({ notify }) => {
+                notify.error('Reception can only view services, not create/edit/delete them.');
+              }).catch(() => {});
+            } catch (e) {}
+          }
+          throw new Error(`Reception role can only view services. ${method} requests are not allowed for ${url}.`);
+        }
+
+        // Block Create/Edit/Delete inventory items
+        if (url.includes('/reception/products') && (method === 'POST' || method === 'PUT' || method === 'DELETE')) {
+          console.warn(`🚨 RBAC BLOCK: Reception attempted ${method} request to inventory: ${url}`);
+          console.warn(`⚠️ Reception can only view inventory, not create/edit/delete items.`);
+          if (typeof window !== 'undefined') {
+            try {
+              import('./toast').then(({ notify }) => {
+                notify.error('Reception can only view inventory, not create/edit/delete items.');
+              }).catch(() => {});
+            } catch (e) {}
+          }
+          throw new Error(`Reception role can only view inventory. ${method} requests are not allowed for ${url}.`);
+        }
+
+        // Block access to admin/provider modules
+        if (url.includes('/admin/') || url.includes('/provider/') || url.includes('/staff/')) {
+          console.warn(`🚨 RBAC BLOCK: Reception attempted access to ${url}`);
+          if (typeof window !== 'undefined') {
+            try {
+              import('./toast').then(({ notify }) => {
+                notify.error('Reception cannot access admin or provider modules.');
+              }).catch(() => {});
+            } catch (e) {}
+          }
+          throw new Error(`Reception role cannot access admin or provider modules. Access denied for ${url}.`);
+        }
+
+        console.log(`✅ RBAC: Reception mutation verified for ${method} ${url}`);
+      }
+    }
+    
+    // 🛡️ RBAC Enforcement: Provider can ONLY perform mutations on treatments/consents/photos
+    if (currentUser?.role === 'provider') {
+      // Block provider from accessing /staff/* or /admin/* routes
+      if (url.includes('/staff/') || url.includes('/admin/')) {
+        console.warn(`🚨 RBAC warning: role=provider attempted unauthorized endpoint: ${url}`);
+        if (typeof window !== 'undefined') {
+          try {
+            import('./toast').then(({ notify }) => {
+              notify.error('Provider role has restricted access. Access denied.');
+            }).catch(() => {});
+          } catch (e) {}
+        }
+        throw new Error(`Unauthorized endpoint for Provider role: ${url}. Provider can only access /provider/* routes.`);
+      }
+      
+      // 🛡️ API SAFETY GUARD: Block all non-view actions for Provider
+      // Provider can ONLY perform POST/PUT/DELETE on: treatments, soap-notes, consents, photos
+      const method = (options.method || 'GET').toUpperCase();
+      const isNonGetRequest = method !== 'GET' && method !== 'HEAD';
+      
+      if (isNonGetRequest) {
+        // Allowed endpoints where Provider CAN perform mutations:
+        const allowedProviderMutationEndpoints = [
+          '/provider/treatments',
+          '/provider/soap-notes',
+          '/provider/consent-forms',
+          '/provider/consents',
+          '/provider/treatments/photos',
+          '/provider/photos',
+          '/profile', // Profile management is allowed
+        ];
+        
+        const isAllowedEndpoint = allowedProviderMutationEndpoints.some(endpoint => 
+          url.startsWith(endpoint) || url.includes(endpoint) || 
+          url.includes('/treatments') || url.includes('/consent') || url.includes('/photos')
+        );
+        
+        if (!isAllowedEndpoint) {
+          console.warn(`🚨 RBAC BLOCK: Provider attempted ${method} request to ${url}`);
+          console.warn(`⚠️ Provider role can only mutate: treatments, soap-notes, consents, photos. All other endpoints are read-only.`);
+          if (typeof window !== 'undefined') {
+            try {
+              import('./toast').then(({ notify }) => {
+                notify.error('Provider role has restricted access. This action is not allowed.');
+              }).catch(() => {});
+            } catch (e) {}
+          }
+          throw new Error(`Provider role is restricted. ${method} requests are not allowed for ${url}. Only GET requests are permitted (except for Treatments, SOAP Notes, Consents, and Photos management).`);
+        }
+      }
     }
     
     // 🛡️ RBAC Enforcement: Admin can ONLY access /admin/* routes (read-only)
@@ -141,6 +339,48 @@ export async function fetchWithAuth(url, options = {}) {
           }
           throw new Error(`Unauthorized endpoint for Admin role: ${url}. Admin can only access /admin/* routes (read-only).`);
         }
+        
+        // 🛡️ API SAFETY GUARD: Block all non-view actions for Admin
+        // Admin can ONLY perform GET requests, except for allowed endpoints
+        const method = (options.method || 'GET').toUpperCase();
+        const isNonGetRequest = method !== 'GET' && method !== 'HEAD';
+        
+        if (isNonGetRequest) {
+          // Allowed endpoints where Admin CAN perform mutations:
+          // - /admin/services (Services management)
+          // - /admin/packages (Packages management)
+          // - /admin/locations (Locations management)
+          // - /admin/users or /admin/staff (Staff management)
+          // - /admin/settings or /business-settings (Settings)
+          const allowedMutationEndpoints = [
+            '/admin/services',
+            '/admin/packages',
+            '/admin/locations',
+            '/admin/users',
+            '/admin/staff',
+            '/admin/settings',
+            '/business-settings',
+            '/profile', // Profile management is allowed
+          ];
+          
+          const isAllowedEndpoint = allowedMutationEndpoints.some(endpoint => 
+            url.startsWith(endpoint) || url.includes(endpoint)
+          );
+          
+          if (!isAllowedEndpoint) {
+            console.warn(`🚨 RBAC BLOCK: Admin attempted ${method} request to ${url}`);
+            console.warn(`⚠️ Admin role is read-only. Only GET requests allowed (except Services, Packages, Locations, Staff, Settings).`);
+            if (typeof window !== 'undefined') {
+              try {
+                import('./toast').then(({ notify }) => {
+                  notify.error('Admins have view-only access. This action is not allowed.');
+                }).catch(() => {});
+              } catch (e) {}
+            }
+            throw new Error(`Admin role is read-only. ${method} requests are not allowed for ${url}. Only GET requests are permitted (except for Services, Packages, Locations, Staff, and Settings management).`);
+          }
+        }
+        
       // Log admin read-only mode
       if (url.startsWith('/admin/')) {
         console.log(`✅ RBAC: Admin read-only mode verified for ${url}`);
@@ -200,7 +440,7 @@ export async function fetchWithAuth(url, options = {}) {
     const contentType = res.headers.get("content-type");
     if (!contentType || !contentType.includes("application/json")) {
       const text = await res.text();
-      console.error("❌ Non-JSON response received:", text.substring(0, 500) + "...");
+      logError("❌ Non-JSON response received:", text.substring(0, 500) + "...");
       
       // If it's a 401 error, redirect to login
       if (res.status === 401) {
@@ -242,7 +482,7 @@ export async function fetchWithAuth(url, options = {}) {
         }
       }
       
-      console.error(`❌ API call failed: ${status} ${statusText} for ${url}`);
+      logError(`❌ API call failed: ${status} ${statusText} for ${url}`);
       
       // Handle specific error cases first
       if (status === 401) {
@@ -361,14 +601,14 @@ export async function fetchWithAuth(url, options = {}) {
         try {
           // Clone response to read it without consuming it
           const responseText = await res.clone().text();
-          console.error("422 Response raw text:", responseText);
+          logError("422 Response raw text:", responseText);
           
           let errorData = {};
           try {
             errorData = JSON.parse(responseText);
-            console.error("422 Validation Error Data:", errorData);
+            logError("422 Validation Error Data:", errorData);
           } catch (parseErr) {
-            console.error("Failed to parse 422 response as JSON:", parseErr);
+            logError("Failed to parse 422 response as JSON:", parseErr);
             // If not JSON, treat as plain text message
             errorData = { message: responseText || "Validation failed" };
           }
@@ -388,7 +628,7 @@ export async function fetchWithAuth(url, options = {}) {
             errorMessage = "Validation failed. Please check your input and fill all required fields correctly.";
           }
           
-          console.error("422 Error message:", errorMessage);
+          logError("422 Error message:", errorMessage);
           const error = new Error(errorMessage);
           error.response = { data: errorData, status: 422 };
           error.errors = errorData.errors;
@@ -398,7 +638,7 @@ export async function fetchWithAuth(url, options = {}) {
           if (parseError instanceof Error && parseError.response) {
             throw parseError;
           }
-          console.error("Error handling 422 response:", parseError);
+          logError("Error handling 422 response:", parseError);
           const error = new Error("Validation failed. Please check your input.");
           error.response = { data: { message: "Could not parse validation errors" }, status: 422 };
           throw error;
@@ -408,8 +648,8 @@ export async function fetchWithAuth(url, options = {}) {
       if (status === 404) {
         // Try to get more info about the 404
         const responseText = await res.text().catch(() => 'No response body');
-        console.error(`❌ 404 Not Found - URL: ${API_BASE}${url}`);
-        console.error(`❌ Response body: ${responseText.substring(0, 200)}`);
+        logError(`❌ 404 Not Found - URL: ${API_BASE}${url}`);
+        logError(`❌ Response body: ${responseText.substring(0, 200)}`);
         throw new Error(`Endpoint not found: ${url}. Please check if the server is running and the route exists.`);
       }
       
@@ -448,16 +688,16 @@ export async function fetchWithAuth(url, options = {}) {
       if (contentType && contentType.includes("application/json")) {
         try {
           const err = await res.json();
-          console.error("❌ API Error JSON:", err);
+          logError("❌ API Error JSON:", err);
           throw new Error(err.message || err.error || `API Error: ${status} ${statusText}`);
         } catch (parseError) {
-          console.error("❌ Failed to parse error response:", parseError);
+          logError("❌ Failed to parse error response:", parseError);
           throw new Error(`API Error: ${status} ${statusText}`);
         }
       } else {
         // Non-JSON error response
         const text = await res.text().catch(() => 'Unable to read response');
-        console.error(`❌ Non-JSON error response: ${text.substring(0, 500)}`);
+        logError(`❌ Non-JSON error response: ${text.substring(0, 500)}`);
         throw new Error(`API Error: ${status} ${statusText}`);
       }
     }
@@ -467,22 +707,22 @@ export async function fetchWithAuth(url, options = {}) {
       console.log(`✅ API call successful for ${url}`);
       return data;
     } catch (jsonError) {
-      console.error("❌ JSON parsing error:", jsonError);
-      console.error("❌ Response status:", res.status);
-      console.error("❌ Content-Type:", res.headers.get("content-type"));
+      logError("❌ JSON parsing error:", jsonError);
+      logError("❌ Response status:", res.status);
+      logError("❌ Content-Type:", res.headers.get("content-type"));
       
       // Try to get the raw response text for debugging
       try {
         const text = await res.text();
-        console.error("❌ Raw response text:", text.substring(0, 500));
+        logError("❌ Raw response text:", text.substring(0, 500));
       } catch (textError) {
-        console.error("❌ Could not get response text:", textError);
+        logError("❌ Could not get response text:", textError);
       }
       
       throw new Error(`Invalid JSON response from server. ${jsonError.message}`);
     }
   } catch (error) {
-    console.error(`❌ API call failed for ${url}:`, error);
+    logError(`❌ API call failed for ${url}:`, error);
     
     // Handle network errors
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
@@ -823,7 +1063,7 @@ export async function deleteAppointment(id) {
     console.log(`✅ Delete result:`, result);
     return result;
   } catch (error) {
-    console.error(`❌ Delete error:`, error);
+    logError(`❌ Delete error:`, error);
     throw error;
   }
 }
@@ -1601,9 +1841,9 @@ export async function uploadTreatmentPhotos(treatmentId, photoData) {
     try {
       const errorData = await response.json();
       errorMessage = errorData.message || errorData.error || errorMessage;
-      console.error('Photo upload error:', errorData);
+      logError('Photo upload error:', errorData);
     } catch (e) {
-      console.error('Photo upload failed with status:', response.status, response.statusText);
+      logError('Photo upload failed with status:', response.status, response.statusText);
     }
     throw new Error(errorMessage);
   }
@@ -1838,7 +2078,7 @@ export async function uploadProfilePhoto(file) {
           console.log("🔐 Photo upload error response:", error);
           throw new Error(error.message || error.error || `Upload failed: ${res.status} ${res.statusText}`);
         } catch (parseError) {
-          console.error("❌ Failed to parse upload error response:", parseError);
+          logError("❌ Failed to parse upload error response:", parseError);
           throw new Error(`Upload failed: ${res.status} ${res.statusText}`);
         }
       } else {
@@ -1854,14 +2094,14 @@ export async function uploadProfilePhoto(file) {
         console.log(`✅ Profile photo uploaded successfully`);
         return data;
       } catch (parseError) {
-        console.error("❌ Failed to parse upload success response:", parseError);
+        logError("❌ Failed to parse upload success response:", parseError);
         throw new Error("Invalid JSON response from server");
       }
     } else {
       throw new Error("Server returned non-JSON response");
     }
   } catch (error) {
-    console.error(`❌ Profile photo upload failed:`, error);
+    logError(`❌ Profile photo upload failed:`, error);
     throw error;
   }
 }
@@ -2007,7 +2247,7 @@ export async function exportComplianceAlertsToPDF(filters = {}) {
     
     return { success: true };
   } catch (error) {
-    console.error("Error exporting PDF:", error);
+    logError("Error exporting PDF:", error);
     throw error;
   }
 }
@@ -2032,7 +2272,7 @@ export async function forgotPassword(email) {
 
     return data;
   } catch (error) {
-    console.error("Error sending password reset link:", error);
+    logError("Error sending password reset link:", error);
     throw error;
   }
 }
@@ -2061,7 +2301,7 @@ export async function resetPassword(email, password, passwordConfirmation, token
 
     return data;
   } catch (error) {
-    console.error("Error resetting password:", error);
+    logError("Error resetting password:", error);
     throw error;
   }
 }
@@ -2097,7 +2337,7 @@ export async function registerClient(name, email, phone, password, passwordConfi
 
     return data;
   } catch (error) {
-    console.error("Error registering client:", error);
+    logError("Error registering client:", error);
     throw error;
   }
 }

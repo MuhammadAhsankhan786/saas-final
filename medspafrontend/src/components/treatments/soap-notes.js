@@ -51,6 +51,8 @@ import {
 } from "lucide-react";
 
 export function SOAPNotes({ onPageChange }) {
+  const role = JSON.parse(localStorage.getItem("user") || "{}").role;
+  const isAdmin = role === "admin";
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedNote, setSelectedNote] = useState(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
@@ -471,27 +473,31 @@ export function SOAPNotes({ onPageChange }) {
               <p className="text-sm text-muted-foreground">Treatment documentation and clinical notes</p>
             </div>
           </div>
-          <Button 
-            onClick={() => setIsCreateNoteOpen(true)}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground" 
-            size="sm"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New SOAP Note
-          </Button>
+          {!isAdmin && (
+            <Button 
+              onClick={() => setIsCreateNoteOpen(true)}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground" 
+              size="sm"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              New SOAP Note
+            </Button>
+          )}
         </div>
         
         {/* Mobile: Action buttons below heading */}
-        <div className="sm:hidden">
-          <Button 
-            onClick={() => setIsCreateNoteOpen(true)}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground w-full" 
-            size="sm"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New SOAP Note
-          </Button>
-        </div>
+        {!isAdmin && (
+          <div className="sm:hidden">
+            <Button 
+              onClick={() => setIsCreateNoteOpen(true)}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground w-full" 
+              size="sm"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              New SOAP Note
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Search */}
@@ -570,15 +576,17 @@ export function SOAPNotes({ onPageChange }) {
                             <Eye className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
                             <span className="hidden sm:inline">View</span>
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditNote(note)}
-                            className="border-border hover:bg-primary/5 h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-3"
-                          >
-                            <Edit className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
-                            <span className="hidden sm:inline">Edit</span>
-                          </Button>
+                          {!isAdmin && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditNote(note)}
+                              className="border-border hover:bg-primary/5 h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-3"
+                            >
+                              <Edit className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                              <span className="hidden sm:inline">Edit</span>
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -717,16 +725,18 @@ export function SOAPNotes({ onPageChange }) {
                 >
                   Close
                 </Button>
-                <Button
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
-                  onClick={() => {
-                    setIsDetailsOpen(false);
-                    handleEditNote(selectedNote);
-                  }}
-                >
-                  <Edit className="mr-2 h-4 w-4" />
-                  Edit Note
-                </Button>
+                {!isAdmin && (
+                  <Button
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
+                    onClick={() => {
+                      setIsDetailsOpen(false);
+                      handleEditNote(selectedNote);
+                    }}
+                  >
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit Note
+                  </Button>
+                )}
               </div>
             </div>
           )}

@@ -42,6 +42,8 @@ export function AppointmentRow({
   onStatusChange,
   onRefresh,
   readOnly = false,
+  canDelete = true,
+  canCancel = false,
 }) {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -73,7 +75,13 @@ export function AppointmentRow({
   };
 
   const handleStatusChange = async (newStatus) => {
-    if (readOnly) return;
+    if (readOnly) {
+      // For clients, show a helpful message
+      if (canCancel) {
+        notify.error("You can only cancel appointments. Please use the Cancel button.");
+      }
+      return;
+    }
     if (!isValidStatus(newStatus)) {
       notify.error("Invalid status selected");
       return;
@@ -94,7 +102,8 @@ export function AppointmentRow({
   };
 
   const handleDelete = async () => {
-    if (readOnly) return;
+    // For clients with canCancel, allow cancel action even if readOnly
+    if (readOnly && !canCancel) return;
     
     // Call parent's delete handler which has proper confirmation
     if (onDelete) {
@@ -213,7 +222,7 @@ export function AppointmentRow({
             <Edit className="h-4 w-4" />
           </Button>
           )}
-          {!readOnly && (
+          {!readOnly && canDelete && !canCancel && (
           <Button
             variant="outline"
             size="sm"
@@ -223,6 +232,18 @@ export function AppointmentRow({
             title="Delete Appointment"
           >
             <Trash2 className="h-4 w-4" />
+          </Button>
+          )}
+          {canCancel && appointment.status !== "cancelled" && appointment.status !== "completed" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="border-border hover:bg-destructive/5 hover:text-destructive"
+            title="Cancel Appointment"
+          >
+            <XCircle className="h-4 w-4" />
           </Button>
           )}
         </div>

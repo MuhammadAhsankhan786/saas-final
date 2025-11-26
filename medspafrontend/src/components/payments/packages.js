@@ -63,6 +63,8 @@ import { useAuth } from "@/context/AuthContext";
 export function Packages({ onPageChange }) {
   const { user } = useAuth();
   const isClient = user?.role === "client";
+  const isProvider = user?.role === "provider";
+  const isReception = user?.role === "reception";
   const [packages, setPackages] = useState([]);
   const [services, setServices] = useState([]);
   const [clients, setClients] = useState([]);
@@ -427,23 +429,27 @@ export function Packages({ onPageChange }) {
               <Download className="mr-2 h-4 w-4" />
               Download Packages
             </Button>
-            <Button
-              onClick={openAssignModal}
-              variant="outline"
-              className="border-border hover:bg-primary/5"
-              size="sm"
-            >
-              <Users className="mr-2 h-4 w-4" />
-              Assign Package
-            </Button>
-            <Button
-              onClick={openCreateModal}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground"
-              size="sm"
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Package
-            </Button>
+            {!isProvider && (
+              <Button
+                onClick={openAssignModal}
+                variant="outline"
+                className="border-border hover:bg-primary/5"
+                size="sm"
+              >
+                <Users className="mr-2 h-4 w-4" />
+                Assign Package
+              </Button>
+            )}
+            {!isProvider && !isReception && (
+              <Button
+                onClick={openCreateModal}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                size="sm"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Package
+              </Button>
+            )}
           </div>
         </div>
         
@@ -459,23 +465,27 @@ export function Packages({ onPageChange }) {
               <Download className="mr-2 h-4 w-4" />
               Download
             </Button>
-            <Button
-              onClick={openAssignModal}
-              variant="outline"
-              className="border-border hover:bg-primary/5 flex-1"
-              size="sm"
-            >
-              <Users className="mr-2 h-4 w-4" />
-              Assign
-            </Button>
-            <Button
-              onClick={openCreateModal}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground flex-1"
-              size="sm"
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add
-            </Button>
+            {!isProvider && (
+              <Button
+                onClick={openAssignModal}
+                variant="outline"
+                className="border-border hover:bg-primary/5 flex-1"
+                size="sm"
+              >
+                <Users className="mr-2 h-4 w-4" />
+                Assign
+              </Button>
+            )}
+            {!isProvider && !isReception && (
+              <Button
+                onClick={openCreateModal}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground flex-1"
+                size="sm"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -579,13 +589,15 @@ export function Packages({ onPageChange }) {
                   <TableHead>Price</TableHead>
                   <TableHead>Duration</TableHead>
                   <TableHead>Services</TableHead>
-                  <TableHead>Actions</TableHead>
+                  {!isProvider && !isReception && (
+                    <TableHead>Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={isProvider || isReception ? 5 : 6} className="text-center py-8">
                       <div className="flex items-center justify-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                         <span className="ml-2 text-muted-foreground">Loading packages...</span>
@@ -594,7 +606,7 @@ export function Packages({ onPageChange }) {
                   </TableRow>
                 ) : filteredPackages.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={isProvider || isReception ? 5 : 6} className="text-center py-8 text-muted-foreground">
                       No packages found
                     </TableCell>
                   </TableRow>
@@ -629,28 +641,30 @@ export function Packages({ onPageChange }) {
                           }
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEditModal(pkg)}
-                            className="border-border hover:bg-primary/5"
-                            title="Edit Package"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeletePackage(pkg.id)}
-                            className="border-border hover:bg-destructive/5 hover:text-destructive"
-                            title="Delete Package"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                      {!isProvider && !isReception && (
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditModal(pkg)}
+                              className="border-border hover:bg-primary/5"
+                              title="Edit Package"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeletePackage(pkg.id)}
+                              className="border-border hover:bg-destructive/5 hover:text-destructive"
+                              title="Delete Package"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}

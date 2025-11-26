@@ -47,6 +47,10 @@ import {
 import { getPayments, generateReceipt } from "@/lib/api";
 
 export function Receipts({ onPageChange }) {
+  const role = JSON.parse(localStorage.getItem("user") || "{}").role;
+  const isAdmin = role === "admin";
+  const isProvider = role === "provider";
+  const isReception = role === "reception";
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -366,7 +370,7 @@ export function Receipts({ onPageChange }) {
                             >
                               <Download className="h-4 w-4" />
                             </Button>
-                            {payment.status === "completed" && (
+                            {!isAdmin && !isProvider && !isReception && payment.status === "completed" && (
                               <Button
                                 variant="outline"
                                 size="sm"

@@ -463,9 +463,8 @@ export function Sidebar({ currentPage, onPageChange }) {
     ];
   }
 
-  // Provider role UI isolation: EXACTLY 7 modules only
-  // 1. Dashboard, 2. My Appointments, 3. Clients, 4. SOAP Notes, 5. Consents, 6. Before/After Photos, 7. Inventory Usage
-  // NO Settings, NO Compliance, NO Notifications, NO Payments, NO Reports, NO Services CRUD
+  // Provider role UI isolation: EXACTLY 8 modules
+  // 1. Dashboard, 2. My Appointments, 3. Clients, 4. SOAP Notes, 5. Consents, 6. Before/After Photos, 7. Inventory Usage, 8. Settings
   if (user.role === "provider") {
     const allowedTopLevel = new Set([
       "dashboard",        // 1. Dashboard
@@ -473,6 +472,7 @@ export function Sidebar({ currentPage, onPageChange }) {
       "clients",          // 3. Clients (view only)
       "treatments",       // 4. SOAP Notes, 5. Consents, 6. Before/After Photos
       "inventory",        // 7. Inventory Usage
+      "settings",         // 8. Settings
     ]);
 
     const allowedChildrenByParent = {
@@ -484,6 +484,8 @@ export function Sidebar({ currentPage, onPageChange }) {
       "treatments": new Set(["treatments/notes", "treatments/consents", "treatments/photos"]),
       // Inventory: View products and log usage (no management)
       "inventory": new Set(["inventory/products"]), // Only products view, usage logging via API
+      // Settings: Profile only
+      "settings": new Set(["settings/profile"]),
     };
 
     filteredNavItems = navigationItems
@@ -589,7 +591,22 @@ export function Sidebar({ currentPage, onPageChange }) {
         roles: ["reception"],
         isDirectLink: true,
       },
-      // 7. Settings
+      // 7. Services (view only)
+      {
+        id: "services",
+        label: "Services",
+        icon: Stethoscope,
+        roles: ["reception"],
+        children: [
+          {
+            id: "services/list",
+            label: "All Services",
+            icon: Stethoscope,
+            roles: ["reception"],
+          },
+        ],
+      },
+      // 8. Settings (Profile only - no Business/Staff)
       {
         id: "settings",
         label: "Settings",

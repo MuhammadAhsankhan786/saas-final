@@ -408,14 +408,16 @@ export function ClientList({ onPageChange }) {
                 <TableHead>Location</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                {!isAdmin && !isProvider && (
+                  <TableHead className="text-right">Actions</TableHead>
+                )}
               </TableRow>
             </TableHeader>
 
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={isAdmin || isProvider ? 5 : 6} className="text-center py-8">
                     <div className="flex items-center justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                       <span className="ml-2 text-muted-foreground">Loading clients...</span>
@@ -424,7 +426,7 @@ export function ClientList({ onPageChange }) {
                 </TableRow>
               ) : filteredClients.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={isAdmin || isProvider ? 5 : 6} className="text-center py-8 text-muted-foreground">
                     No clients found
                   </TableCell>
                 </TableRow>
@@ -498,31 +500,28 @@ export function ClientList({ onPageChange }) {
 
                     {/* Actions */}
                     <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {/* Provider can only view, not edit/delete */}
-                          {!isAdmin && !isProvider && (
+                      {!isAdmin && !isProvider && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => openEditModal(client)}>
                               <Edit className="mr-2 h-4 w-4" /> Edit Client
                             </DropdownMenuItem>
-                          )}
-                          {!isAdmin && !isProvider && (
                             <DropdownMenuItem onClick={() => onPageChange(`appointments/book?clientId=${client.id}`)}>
                               <Calendar className="mr-2 h-4 w-4" /> Book Appointment
                             </DropdownMenuItem>
-                          )}
-                          {!isAdmin && !isProvider && (
-                            <DropdownMenuItem onClick={() => handleDeleteClient(client.id)}>
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete Client
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            {!isReception && (
+                              <DropdownMenuItem onClick={() => handleDeleteClient(client.id)}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete Client
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </TableCell>
                   </TableRow>
                   );

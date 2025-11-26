@@ -75,6 +75,7 @@ export function AppointmentList({ onPageChange }) {
   const isAdmin = role === "admin";
   const isReception = role === "reception";
   const isProvider = role === "provider";
+  const isClient = role === "client";
   const { confirm, dialog } = useConfirm();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -200,6 +201,12 @@ export function AppointmentList({ onPageChange }) {
   };
 
   const handleStatusChange = async (appointmentId, newStatus) => {
+    // Clients cannot change status - they can only cancel appointments
+    if (isClient) {
+      notify.error("You can only cancel appointments. Please use the Cancel button.");
+      return;
+    }
+    
     if (!isValidStatus(newStatus)) {
       notify.error("Invalid status selected");
       return;
@@ -209,9 +216,8 @@ export function AppointmentList({ onPageChange }) {
       await updateAppointmentStatus(appointmentId, newStatus);
       // Refresh appointments list using role-based endpoint
       const data = await getAppointments();
-      const formattedAppointments = Array.isArray(data) 
-        ? data.map(formatAppointmentForDisplay)
-        : [];
+      const rawList = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
+      const formattedAppointments = rawList.map(formatAppointmentForDisplay);
       setAppointments(formattedAppointments);
       notify.success(`Appointment status updated to ${newStatus}`);
     } catch (error) {
@@ -247,31 +253,31 @@ export function AppointmentList({ onPageChange }) {
   };
 
   const handleDeleteAppointment = async (appointmentId) => {
+    const isClientAction = isClient;
     const confirmed = await confirm({
-      title: "Delete Appointment",
-      description: "Are you sure you want to delete this appointment?",
-      confirmText: "Delete",
-      cancelText: "Cancel",
+      title: isClientAction ? "Cancel Appointment" : "Delete Appointment",
+      description: isClientAction 
+        ? "Are you sure you want to cancel this appointment?"
+        : "Are you sure you want to delete this appointment?",
+      confirmText: isClientAction ? "Cancel Appointment" : "Delete",
+      cancelText: "No",
     });
 
     if (confirmed) {
-      const toastId = notify.loading("Deleting appointment...");
+      const toastId = notify.loading(isClientAction ? "Cancelling appointment..." : "Deleting appointment...");
       try {
         await deleteAppointment(appointmentId);
         notify.dismiss(toastId);
-        notify.success("Appointment deleted successfully");
+        notify.success(isClientAction ? "Appointment cancelled successfully" : "Appointment deleted successfully");
         // Refresh appointments list using role-based endpoint
-        const data = isAdmin 
-          ? await getAppointments() 
-          : await getMyAppointments();
-        const formattedAppointments = Array.isArray(data) 
-          ? data.map(formatAppointmentForDisplay)
-          : [];
+        const data = await getAppointments();
+        const rawList = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
+        const formattedAppointments = rawList.map(formatAppointmentForDisplay);
         setAppointments(formattedAppointments);
       } catch (error) {
-        console.error("Error deleting appointment:", error);
+        console.error("Error deleting/cancelling appointment:", error);
         notify.dismiss(toastId);
-        notify.error("Failed to delete appointment: " + error.message);
+        notify.error(isClientAction ? "Failed to cancel appointment: " + error.message : "Failed to delete appointment: " + error.message);
       }
     }
   };
@@ -343,20 +349,7 @@ export function AppointmentList({ onPageChange }) {
               </p>
             </div>
           </div>
-          {isAdmin && (
-            <Button
-              onClick={() => {
-                setEditingAppointment(null);
-                setIsEditOpen(true);
-              }}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground"
-              size="sm"
-            >
-              <Calendar className="mr-2 h-4 w-4" />
-              New Appointment
-            </Button>
-          )}
-          {!isAdmin && role !== "client" && (
+          {!isAdmin && !isProvider && role !== "client" && (
             <Button
               onClick={() => onPageChange("appointments/book")}
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
@@ -370,19 +363,7 @@ export function AppointmentList({ onPageChange }) {
         
         {/* Mobile: Action buttons below heading */}
         <div className="sm:hidden">
-          {isAdmin ? (
-            <Button
-              onClick={() => {
-                setEditingAppointment(null);
-                setIsEditOpen(true);
-              }}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
-              size="sm"
-            >
-              <Calendar className="mr-2 h-4 w-4" />
-              New Appointment
-            </Button>
-          ) : role !== "client" ? (
+          {!isAdmin && !isProvider && role !== "client" ? (
             <Button
               onClick={() => onPageChange("appointments/book")}
               className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
@@ -484,7 +465,9 @@ export function AppointmentList({ onPageChange }) {
                       onDelete={handleDeleteAppointment}
                       onStatusChange={handleStatusChange}
                       onRefresh={handleRefreshAppointments}
-                      readOnly={false}
+                      readOnly={isAdmin || isProvider || isClient}
+                      canDelete={!isAdmin && !isProvider && !isReception && !isClient}
+                      canCancel={isClient}
                     />
                   ))
                 )}
@@ -560,24 +543,41 @@ export function AppointmentList({ onPageChange }) {
                           <Eye className="h-4 w-4 mr-1" />
                           View
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditAppointment(appointment)}
-                          className="border-border hover:bg-primary/5"
-                        >
-                          <Edit className="h-4 w-4 mr-1" />
-                          Edit
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteAppointment(appointment.id)}
-                          className="border-border hover:bg-destructive/5 hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Delete
-                        </Button>
+                        {!isAdmin && !isProvider && !isClient && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditAppointment(appointment)}
+                              className="border-border hover:bg-primary/5"
+                            >
+                              <Edit className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
+                            {!isReception && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteAppointment(appointment.id)}
+                                className="border-border hover:bg-destructive/5 hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Delete
+                              </Button>
+                            )}
+                          </>
+                        )}
+                        {isClient && appointment.status !== "cancelled" && appointment.status !== "completed" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteAppointment(appointment.id)}
+                            className="border-border hover:bg-destructive/5 hover:text-destructive"
+                          >
+                            <XCircle className="h-4 w-4 mr-1" />
+                            Cancel
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -650,7 +650,7 @@ export function AppointmentList({ onPageChange }) {
                     <div className="font-medium text-foreground">{selectedAppointment.service?.name || "N/A"}</div>
                     {selectedAppointment.service?.price && (
                       <div className="text-xs text-muted-foreground">
-                        ${selectedAppointment.service.price.toFixed(2)}
+                        ${parseFloat(selectedAppointment.service.price || 0).toFixed(2)}
                       </div>
                     )}
                   </div>
@@ -659,7 +659,7 @@ export function AppointmentList({ onPageChange }) {
                     <div className="font-medium text-foreground">{selectedAppointment.package?.name || "N/A"}</div>
                     {selectedAppointment.package?.price && (
                       <div className="text-xs text-muted-foreground">
-                        ${selectedAppointment.package.price.toFixed(2)}
+                        ${parseFloat(selectedAppointment.package.price || 0).toFixed(2)}
                       </div>
                     )}
                   </div>
@@ -709,14 +709,38 @@ export function AppointmentList({ onPageChange }) {
                 >
                   Close
                 </Button>
-                <Button
-                  onClick={() => handleEditAppointment(selectedAppointment)}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground text-sm"
-                  size="sm"
-                >
-                  <Edit className="mr-2 h-3 w-3" />
-                  Edit
-                </Button>
+                {!isAdmin && !isProvider && !isClient && (
+                  <Button
+                    onClick={() => handleEditAppointment(selectedAppointment)}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground text-sm"
+                    size="sm"
+                  >
+                    <Edit className="mr-2 h-3 w-3" />
+                    Edit
+                  </Button>
+                )}
+                {!(isAdmin || isProvider || isReception || isClient) && ( // Hide for Admin, Provider, Reception, and Client
+                  <Button
+                    onClick={() => handleDeleteAppointment(selectedAppointment.id)}
+                    variant="destructive"
+                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground text-sm"
+                    size="sm"
+                  >
+                    <Trash2 className="mr-2 h-3 w-3" />
+                    Delete
+                  </Button>
+                )}
+                {isClient && selectedAppointment.status !== "cancelled" && selectedAppointment.status !== "completed" && (
+                  <Button
+                    onClick={() => handleDeleteAppointment(selectedAppointment.id)}
+                    variant="destructive"
+                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground text-sm"
+                    size="sm"
+                  >
+                    <XCircle className="mr-2 h-3 w-3" />
+                    Cancel Appointment
+                  </Button>
+                )}
               </div>
             </div>
           )}

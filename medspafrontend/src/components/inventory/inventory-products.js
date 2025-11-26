@@ -58,6 +58,7 @@ export function InventoryProducts({ onPageChange }) {
   const role = JSON.parse(localStorage.getItem("user") || "{}").role;
   const isAdmin = role === "admin";
   const isProvider = role === "provider";
+  const isReception = role === "reception";
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -539,7 +540,7 @@ export function InventoryProducts({ onPageChange }) {
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Create Product Dialog - Shared between desktop and mobile */}
-      {!isAdmin && (
+      {!isAdmin && !isProvider && !isReception && (
         <Dialog open={isCreateProductOpen} onOpenChange={setIsCreateProductOpen}>
           <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
             <DialogHeader>
@@ -733,7 +734,7 @@ export function InventoryProducts({ onPageChange }) {
               Export Inventory
             </Button>
           )}
-          {!isAdmin && (
+          {!isAdmin && !isProvider && !isReception && (
               <Button 
                 onClick={() => setIsCreateProductOpen(true)}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground" 
@@ -759,7 +760,7 @@ export function InventoryProducts({ onPageChange }) {
               Export Inventory
             </Button>
           )}
-          {!isAdmin && (
+          {!isAdmin && !isProvider && !isReception && (
             <Button 
               onClick={() => setIsCreateProductOpen(true)}
               className="bg-primary hover:bg-primary/90 text-primary-foreground w-full" 
@@ -962,7 +963,7 @@ export function InventoryProducts({ onPageChange }) {
                             <Eye className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
                             <span className="hidden sm:inline">View</span>
                           </Button>
-                      {!isAdmin && (
+                      {!isAdmin && !isProvider && !isReception && (
                       <Button
                             variant="outline"
                             size="sm"
@@ -973,7 +974,7 @@ export function InventoryProducts({ onPageChange }) {
                             <span className="hidden sm:inline">Edit</span>
                           </Button>
                       )}
-                      {!isAdmin && (
+                      {!isAdmin && !isProvider && !isReception && (
                       <Button
                             variant="outline"
                             size="sm"
@@ -984,7 +985,7 @@ export function InventoryProducts({ onPageChange }) {
                             <span className="sm:hidden">+</span>
                           </Button>
                       )}
-                      {!isAdmin && (
+                      {!isAdmin && !isProvider && !isReception && (
                       <Button
                             variant="outline"
                             size="sm"
@@ -1148,16 +1149,18 @@ export function InventoryProducts({ onPageChange }) {
                 >
                   Close
                 </Button>
-                <Button
-                  onClick={() => {
-                    setIsDetailsOpen(false);
-                    setTimeout(() => handleEditProduct(selectedProduct), 100);
-                  }}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                >
-                  <Edit className="mr-2 h-4 w-4" />
-                  Edit Product
-                </Button>
+                {!isProvider && !isReception && (
+                  <Button
+                    onClick={() => {
+                      setIsDetailsOpen(false);
+                      setTimeout(() => handleEditProduct(selectedProduct), 100);
+                    }}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                  >
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit Product
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -1165,6 +1168,7 @@ export function InventoryProducts({ onPageChange }) {
       </Dialog>
 
       {/* Edit Product Dialog - Responsive */}
+      {!isProvider && !isReception && (
       <Dialog open={isEditProductOpen} onOpenChange={setIsEditProductOpen}>
         <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
@@ -1324,6 +1328,7 @@ export function InventoryProducts({ onPageChange }) {
           )}
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 }
