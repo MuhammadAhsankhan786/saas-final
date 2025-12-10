@@ -951,7 +951,7 @@ class AppointmentController extends Controller
         ]);
 
         // Load relationships for notification
-        $appointment->load(['client', 'provider', 'location', 'service', 'package']);
+        $appointment->load(['client.clientUser', 'provider', 'location', 'service', 'package']);
 
         // Send notification to provider if assigned
         if ($appointment->provider_id && $appointment->provider) {
@@ -960,6 +960,16 @@ class AppointmentController extends Controller
                 Log::info("📨 SMS notification sent to provider: {$appointment->provider->name} for appointment #{$appointment->id}");
             } catch (\Exception $e) {
                 Log::error("Failed to send notification: " . $e->getMessage());
+            }
+        }
+
+        // Send confirmation SMS to client (Client books appointment)
+        if ($appointment->client) {
+            try {
+                $this->twilioService->sendAppointmentConfirmation($appointment, $appointment->client);
+                Log::info("📱 Confirmation SMS sent to client for appointment #{$appointment->id}");
+            } catch (\Exception $e) {
+                Log::error("Failed to send confirmation SMS: " . $e->getMessage());
             }
         }
 
@@ -1064,8 +1074,8 @@ class AppointmentController extends Controller
             'package_id', 'status', 'notes'
         ]));
 
-        // Send rescheduled SMS if start_time changed and user is reception
-        if ($request->has('start_time') && $oldStartTime !== $appointment->start_time && $user->role === 'reception') {
+        // Send rescheduled SMS if start_time changed (Reception or Client)
+        if ($request->has('start_time') && $oldStartTime !== $appointment->start_time && in_array($user->role, ['reception', 'client'])) {
             try {
                 $this->twilioService->sendAppointmentRescheduled($appointment, $appointment->client, $oldStartTime);
                 Log::info("📱 Rescheduled SMS sent to client for appointment #{$appointment->id}");
