@@ -894,10 +894,37 @@ class AppointmentController extends Controller
         // Send confirmation SMS to client (Reception creates appointment)
         if ($appointment->client && $user->role === 'reception') {
             try {
-                $this->twilioService->sendAppointmentConfirmation($appointment, $appointment->client);
-                Log::info("📱 Confirmation SMS sent to client for appointment #{$appointment->id}");
+                $clientPhone = $appointment->client->clientUser->phone ?? $appointment->client->phone;
+                Log::info("📱 Attempting to send SMS", [
+                    'appointment_id' => $appointment->id,
+                    'client_id' => $appointment->client->id,
+                    'client_name' => $appointment->client->name,
+                    'phone' => $clientPhone,
+                    'phone_source' => $appointment->client->clientUser ? 'clientUser' : 'client'
+                ]);
+                
+                $smsLog = $this->twilioService->sendAppointmentConfirmation($appointment, $appointment->client);
+                
+                if ($smsLog && $smsLog->status === 'sent') {
+                    Log::info("✅ Confirmation SMS sent successfully", [
+                        'appointment_id' => $appointment->id,
+                        'sms_log_id' => $smsLog->id,
+                        'message_sid' => $smsLog->message_sid
+                    ]);
+                } else {
+                    Log::error("❌ SMS failed to send", [
+                        'appointment_id' => $appointment->id,
+                        'sms_log_id' => $smsLog->id ?? null,
+                        'status' => $smsLog->status ?? 'unknown',
+                        'error' => $smsLog->error_message ?? 'Unknown error'
+                    ]);
+                }
             } catch (\Exception $e) {
-                Log::error("Failed to send confirmation SMS: " . $e->getMessage());
+                Log::error("❌ Exception sending confirmation SMS", [
+                    'appointment_id' => $appointment->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
             }
         }
 
